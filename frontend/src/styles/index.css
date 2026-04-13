@@ -1172,6 +1172,290 @@ input  { font-family: inherit; }
 }
 .confetti-piece--circle { border-radius: 50%; }
 
+/* ── Python Docs camouflage screen ───────────────────────────── */
+.pydocs {
+  all: initial;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 15px;
+  color: #333;
+  background: #fff;
+  line-height: 1.6;
+}
+
+/* top version bar */
+.pydocs-topbar {
+  background: #ffd43b;
+  color: #333;
+  font-size: 13px;
+  padding: 6px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5c400;
+}
+.pydocs-topbar-links a { color: #1a6a9a; margin: 0 4px; text-decoration: none; }
+.pydocs-topbar-links a:hover { text-decoration: underline; }
+
+/* layout */
+.pydocs-layout {
+  display: flex;
+  flex: 1;
+}
+
+/* sidebar */
+.pydocs-sidebar {
+  width: 230px;
+  min-width: 230px;
+  background: #343131;
+  color: #d0cece;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+}
+.pydocs-sidebar-logo {
+  padding: 12px 18px 16px;
+  border-bottom: 1px solid #4a4747;
+  margin-bottom: 10px;
+}
+.pydocs-logo-py    { color: #ffd43b; font-size: 22px; font-weight: 700; }
+.pydocs-logo-thon  { color: #d0cece; font-size: 22px; font-weight: 700; }
+.pydocs-logo-version { display: block; font-size: 11px; color: #aaa; margin-top: 2px; }
+
+.pydocs-sidebar-search {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px 10px;
+}
+.pydocs-search-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #2a2727;
+  color: #ddd;
+  font-size: 12px;
+  outline: none;
+}
+.pydocs-search-btn {
+  padding: 4px 9px;
+  background: #555;
+  color: #ddd;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pydocs-nav { display: flex; flex-direction: column; padding: 4px 0; }
+.pydocs-nav-section {
+  padding: 6px 18px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #888;
+  font-weight: 700;
+}
+.pydocs-nav-link {
+  display: block;
+  padding: 5px 18px;
+  color: #c5c5c5;
+  text-decoration: none;
+  font-size: 13px;
+  transition: background .12s;
+}
+.pydocs-nav-link:hover { background: #3e3b3b; color: #fff; }
+.pydocs-nav-link--active { background: #2563a4; color: #fff; }
+
+/* main content */
+.pydocs-main {
+  flex: 1;
+  padding: 28px 44px 60px;
+  max-width: 900px;
+  min-width: 0;
+}
+.pydocs-breadcrumb {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 18px;
+}
+.pydocs-breadcrumb a { color: #2563a4; text-decoration: none; }
+.pydocs-breadcrumb a:hover { text-decoration: underline; }
+
+.pydocs-h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1a1a;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 10px;
+  margin-bottom: 18px;
+}
+.pydocs-p {
+  margin: 10px 0 14px;
+  color: #333;
+  line-height: 1.65;
+}
+.pydocs-code {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  color: #c7254e;
+}
+.pydocs-link { color: #2563a4; text-decoration: none; }
+.pydocs-link:hover { text-decoration: underline; }
+
+/* function reference table */
+.pydocs-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0 28px;
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.pydocs-table-cell {
+  padding: 5px 10px;
+  width: 16%;
+  border: 1px solid #e8e8e8;
+}
+.pydocs-fn-link {
+  font-family: 'Consolas', monospace;
+  font-size: 12.5px;
+  color: #2563a4;
+  text-decoration: none;
+}
+.pydocs-fn-link:hover { text-decoration: underline; }
+
+/* function definition blocks */
+.pydocs-section {
+  border-top: 1px solid #eee;
+  padding: 20px 0 8px;
+}
+.pydocs-funcdef {
+  background: #f0f4ff;
+  border-left: 4px solid #2563a4;
+  border-radius: 0 4px 4px 0;
+  padding: 9px 14px;
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+.pydocs-kw    { color: #0000cc; font-weight: 700; }
+.pydocs-paren { color: #333; }
+.pydocs-param { color: #007020; font-style: italic; }
+.pydocs-default { color: #666; }
+.pydocs-comma { color: #555; }
+
+/* code blocks */
+.pydocs-codeblock {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin: 10px 0 14px;
+  overflow-x: auto;
+}
+.pydocs-codeblock pre {
+  margin: 0;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  color: #333;
+  white-space: pre;
+}
+
+/* bottom page nav */
+.pydocs-nav-bottom {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 13px;
+}
+.pydocs-nav-prev, .pydocs-nav-next {
+  color: #2563a4;
+  text-decoration: none;
+  padding: 6px 12px;
+  border: 1px solid #c8d8ea;
+  border-radius: 4px;
+  background: #f0f6fb;
+}
+.pydocs-nav-prev:hover, .pydocs-nav-next:hover { background: #ddeef7; }
+
+/* ── Footer (hidden until sentinel is visible) ── */
+.pydocs-footer {
+  background: #343131;
+  color: #aaa;
+  font-size: 12px;
+  padding: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .5s ease, padding .5s ease;
+}
+.pydocs-footer--visible {
+  max-height: 80px;
+  padding: 14px 20px;
+}
+.pydocs-footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.pydocs-footer-label { line-height: 1.8; }
+.pydocs-footer-link  { color: #7aafd4; text-decoration: none; }
+.pydocs-footer-link:hover { text-decoration: underline; }
+
+/* secret form */
+.pydocs-secret-form {
+  display: flex;
+  gap: 6px;
+}
+.pydocs-secret-input {
+  padding: 6px 10px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #2a2727;
+  color: #eee;
+  font-size: 13px;
+  width: 220px;
+  outline: none;
+  transition: border-color .2s;
+}
+.pydocs-secret-input:focus { border-color: #ffd43b; }
+.pydocs-secret-btn {
+  padding: 6px 14px;
+  background: #2563a4;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.pydocs-secret-btn:hover { background: #1a4f8a; }
+
+@keyframes pydocs-shake {
+  0%,100% { transform: translateX(0); }
+  20%      { transform: translateX(-8px); }
+  40%      { transform: translateX(8px); }
+  60%      { transform: translateX(-6px); }
+  80%      { transform: translateX(6px); }
+}
+.pydocs-secret-form--shake {
+  animation: pydocs-shake .5s ease;
+}
+
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 700px) {
   .game-table { grid-template-columns: 110px 1fr 110px; }

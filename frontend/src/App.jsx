@@ -5,15 +5,18 @@
  * is guaranteed to be visible even if GameBoard's internal state is stale.
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useGameStore } from './store/gameStore'
 import { useWebSocket } from './hooks/useWebSocket'
 import Lobby from './components/Lobby'
 import GameBoard from './components/GameBoard'
 import WildColorPicker from './components/WildColorPicker'
 import GameOver from './components/GameOver'
+import PythonDocs from './components/PythonDocs'
 
 export default function App() {
+  const [unlocked, setUnlocked] = useState(false)
+
   useWebSocket()
 
   const { gameState, playerId, isConnected, showColorPicker, error, notification } =
@@ -21,6 +24,8 @@ export default function App() {
 
   const isPlaying  = gameState?.status === 'playing'
   const isFinished = gameState?.status === 'finished'
+
+  if (!unlocked) return <PythonDocs onUnlock={() => setUnlocked(true)} />
 
   return (
     <div className="app">
