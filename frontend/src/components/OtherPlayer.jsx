@@ -10,12 +10,14 @@
  * Top position renders cards in a horizontal row.
  */
 
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
 import Card from './Card'
 
 export default function OtherPlayer({ player, isCurrentTurn, position = 'top' }) {
   const { playerId, catchUno } = useGameStore()
+  const [showCatch, setShowCatch] = useState(false)
+  const timerRef = useRef(null)
 
   if (player.id === playerId) return null
 
@@ -23,6 +25,19 @@ export default function OtherPlayer({ player, isCurrentTurn, position = 'top' })
   const isOffline   = !player.is_connected
   const hasUno      = player.has_called_uno
   const canCatch    = cardCount === 1 && !hasUno
+
+  // Show the Catch button only after a 3-second delay.
+  // Reset immediately if the opponent calls UNO, plays their card, or draws.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (canCatch) {
+      timerRef.current = setTimeout(() => setShowCatch(true), 3000)
+    } else {
+      clearTimeout(timerRef.current)
+      setShowCatch(false)
+    }
+    return () => clearTimeout(timerRef.current)
+  }, [canCatch])
   const isSide      = position === 'left' || position === 'right'
   // If opponent has more than 5 cards, collapse to a badge — don't render individual card backs
   const MAX_SHOW    = 5
@@ -69,8 +84,8 @@ export default function OtherPlayer({ player, isCurrentTurn, position = 'top' })
         )}
       </div>
 
-      {/* Catch UNO button */}
-      {canCatch && (
+      {/* Catch UNO button — appears after 3-second delay */}
+      {showCatch && (
         <button
           className="btn btn--catch"
           onClick={() => catchUno(player.id)}
