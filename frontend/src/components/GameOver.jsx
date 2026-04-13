@@ -12,9 +12,20 @@ const CONFETTI_COLORS = [
   '#40d0ff','#ff60a0',
 ]
 
+const RANK_MEDALS = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅']
+const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th', '6th']
+
 export default function GameOver({ winner, winnerId, myId }) {
-  const { leaveRoom } = useGameStore()
+  const { leaveRoom, gameState } = useGameStore()
   const isWinner = winnerId === myId
+  const placements = gameState?.placements || []
+
+  // Fallback: if no placements data, build a minimal one from winner
+  const rankings = placements.length > 0
+    ? placements
+    : (winner ? [{ rank: 1, name: winner, id: winnerId }] : [])
+
+  const myRank = rankings.find(p => p.id === myId)?.rank ?? null
 
   const confetti = useMemo(() => {
     if (!isWinner) return []
@@ -29,6 +40,15 @@ export default function GameOver({ winner, winnerId, myId }) {
       rotation: `${(i * 47) % 360}deg`,
     }))
   }, [isWinner])
+
+  const heroEmoji = myRank === 1 ? '🏆' : myRank === 2 ? '🥈' : myRank === 3 ? '🥉' : '🎭'
+  const heroTitle = myRank === 1
+    ? 'Victory!'
+    : myRank === 2
+    ? `${RANK_LABELS[1]} Place!`
+    : myRank
+    ? `${RANK_LABELS[myRank - 1]} Place`
+    : `${winner} Wins!`
 
   return (
     <div className="modal-overlay">
@@ -52,20 +72,35 @@ export default function GameOver({ winner, winnerId, myId }) {
         </div>
       )}
       <div className="game-over-card">
-        <div className="game-over-emoji">{isWinner ? '🏆' : '🎭'}</div>
-        <h2 className="game-over-title">
-          {isWinner ? 'Victory!' : `${winner} Wins!`}
-        </h2>
+        <div className="game-over-emoji">{heroEmoji}</div>
+        <h2 className="game-over-title">{heroTitle}</h2>
         <div className="game-over-divider" />
+
+        {/* Rankings table */}
+        {rankings.length > 1 && (
+          <div className="game-over-rankings">
+            {rankings.map((p) => (
+              <div
+                key={p.id}
+                className={`ranking-row${p.id === myId ? ' ranking-row--me' : ''}`}
+              >
+                <span className="ranking-medal">{RANK_MEDALS[p.rank - 1]}</span>
+                <span className="ranking-place">{RANK_LABELS[p.rank - 1]}</span>
+                <span className="ranking-name">{p.name}{p.id === myId ? ' (you)' : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <p className="game-over-sub">
           {isWinner
-            ? 'Magnificent! You played all your cards and claimed the throne.'
-            : `A worthy champion. Fortune may favour you next round.`}
+            ? 'Magnificent! You claimed the throne.'
+            : myRank === 2
+            ? 'So close! A strong showing.'
+            : 'Fortune may favour you next round.'}
         </p>
-        <button
-          className="btn btn--primary btn--large"
-          onClick={leaveRoom}
-        >
+
+        <button className="btn btn--primary btn--large" onClick={leaveRoom}>
           Back to Lobby
         </button>
       </div>

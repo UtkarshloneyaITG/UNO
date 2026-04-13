@@ -60,36 +60,76 @@ export default function GameBoard() {
   } = gameState
 
   const isMyTurn  = current_player_id === playerId
-  const opponents = players.filter((p) => p.id !== playerId)
 
-  // Assign opponents to table positions based on count
+  // ── Turn-order seating ──────────────────────────────────────────────────
+  // Walk the players array from our seat in the current direction so that
+  // the opponent who plays immediately after us always sits to the right
+  // (direction=1 / clockwise) or to the left (direction=-1 / CCW).
   //
-  //  1 opp  →  top
-  //  2 opps →  top · right
-  //  3 opps →  top · left · right
-  //  4 opps →  top(×2) · left · right
-  //  5 opps →  top(×3) · left · right   (6-player game)
+  // Clockwise  layout: right → top... → left
+  // CCW layout:        left  → top... → right
+  const myIndex = players.findIndex((p) => p.id === playerId)
+  const n = players.length
+
+  // orderedOpponents[0] = next player after me, [1] after that, etc.
+  const orderedOpponents = []
+  if (myIndex !== -1) {
+    for (let step = 1; step < n; step++) {
+      const idx = ((myIndex + step * direction) % n + n) % n
+      orderedOpponents.push(players[idx])
+    }
+  } else {
+    // Fallback: just use array order (shouldn't happen)
+    players.forEach((p) => { if (p.id !== playerId) orderedOpponents.push(p) })
+  }
+
+  const oCount = orderedOpponents.length
   let topOpponents = []
   let leftOpponent  = null
   let rightOpponent = null
 
-  if (opponents.length === 1) {
-    topOpponents = [opponents[0]]
-  } else if (opponents.length === 2) {
-    topOpponents  = [opponents[0]]
-    rightOpponent = opponents[1]
-  } else if (opponents.length === 3) {
-    topOpponents  = [opponents[0]]
-    leftOpponent  = opponents[1]
-    rightOpponent = opponents[2]
-  } else if (opponents.length === 4) {
-    topOpponents  = [opponents[0], opponents[1]]
-    leftOpponent  = opponents[2]
-    rightOpponent = opponents[3]
-  } else if (opponents.length >= 5) {
-    topOpponents  = [opponents[0], opponents[1], opponents[2]]
-    leftOpponent  = opponents[3]
-    rightOpponent = opponents[4]
+  if (oCount === 1) {
+    topOpponents = [orderedOpponents[0]]
+  } else if (oCount === 2) {
+    // direction=1:  right(next) · top
+    // direction=-1: left(next)  · top
+    if (direction === 1) {
+      rightOpponent = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1]]
+    } else {
+      leftOpponent  = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1]]
+    }
+  } else if (oCount === 3) {
+    if (direction === 1) {
+      rightOpponent = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1]]
+      leftOpponent  = orderedOpponents[2]
+    } else {
+      leftOpponent  = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1]]
+      rightOpponent = orderedOpponents[2]
+    }
+  } else if (oCount === 4) {
+    if (direction === 1) {
+      rightOpponent = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1], orderedOpponents[2]]
+      leftOpponent  = orderedOpponents[3]
+    } else {
+      leftOpponent  = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1], orderedOpponents[2]]
+      rightOpponent = orderedOpponents[3]
+    }
+  } else if (oCount >= 5) {
+    if (direction === 1) {
+      rightOpponent = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3]]
+      leftOpponent  = orderedOpponents[4]
+    } else {
+      leftOpponent  = orderedOpponents[0]
+      topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3]]
+      rightOpponent = orderedOpponents[4]
+    }
   }
 
   const currentPlayerName =

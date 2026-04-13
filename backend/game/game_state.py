@@ -47,6 +47,9 @@ class GameState:
         self.last_action: str = ""
         self.action_log: List[str] = []
         self.skipped_player_id: Optional[str] = None   # set when a Skip card is played
+        # Multi-place ranking
+        self.placements: List[dict] = []              # [{rank, id, name}] in finish order
+        self.finished_player_ids: Set[str] = set()    # players who have emptied their hand
 
     # ------------------------------------------------------------------
     # Room management
@@ -107,6 +110,9 @@ class GameState:
         self.last_wild_draw_four_player_id = None
         self.winner = None
         self.winner_id = None
+        self.placements = []
+        self.finished_player_ids = set()
+        self.skipped_player_id = None
         self.action_log = []
 
         # Deal 7 cards to each player
@@ -212,13 +218,36 @@ class GameState:
         self.discard_pile.append(card)
         self.drawn_card_id = None  # drawn-card tracking is cleared on any play
 
-        # Win condition
+        # ── Placement / win condition ────────────────────────────────
         if len(current.hand) == 0:
-            self.status = GameStatus.FINISHED
-            self.winner = current.name
-            self.winner_id = current.id
-            self._log(f"🎉 {current.name} wins the game!")
-            return {"success": True, "game_over": True}
+            rank = len(self.placements) + 1
+            ordinal = ["1st", "2nd", "3rd", "4th", "5th", "6th"][rank - 1]
+            self.placements.append({"rank": rank, "id": current.id, "name": current.name})
+            self.finished_player_ids.add(current.id)
+            self.skipped_player_id = None
+            self._log(f"🎉 {current.name} finishes in {ordinal} place!")
+
+            # Count remaining active players
+            active = [p for p in self.players if p.id not in self.finished_player_ids]
+
+            if len(active) <= 1:
+                # Game over — last standing player gets last place
+                if active:
+                    last_rank = len(self.placements) + 1
+                    self.placements.append(
+                        {"rank": last_rank, "id": active[0].id, "name": active[0].name}
+                    )
+                    self.finished_player_ids.add(active[0].id)
+                self.status = GameStatus.FINISHED
+                self.winner = self.placements[0]["name"]
+                self.winner_id = self.placements[0]["id"]
+                self._log(f"🏆 Game over! {self.winner} takes the crown!")
+                return {"success": True, "game_over": True}
+
+            # Game continues — advance to next active player
+            self._advance_turn()
+            self._auto_skip_offline()
+            return {"success": True}
 
         # If player played down to 1 card, remove them from uno_called
         # (they must call UNO themselves each time)
@@ -496,6 +525,7 @@ class GameState:
             "challenge_available": self.challenge_available,
             "drawn_card_id": self.drawn_card_id,
             "skipped_player_id": self.skipped_player_id,
+            "placements": list(self.placements),
             "last_action": self.last_action,
             "action_log": self.action_log[-15:],
             "host_player_id": self.host_player_id,
@@ -506,6 +536,10 @@ class GameState:
         }
 
         for idx, player in enumerate(self.players):
+            # Look up this player's finishing rank (None if still playing)
+            finished_rank = next(
+                (p["rank"] for p in self.placements if p["id"] == player.id), None
+            )
             state["players"].append(
                 {
                     "id": player.id,
@@ -513,6 +547,7 @@ class GameState:
                     "card_count": len(player.hand),
                     "has_called_uno": player.id in self.uno_called,
                     "is_connected": player.is_connected,
+                    "rank": finished_rank,   # None = still playing; 1/2/3… = placed
                 }
             )
             if player.id == player_id:
@@ -544,8 +579,14 @@ class GameState:
         return next((p for p in self.players if p.id == player_id), None)
 
     def _next_index(self) -> int:
-        """Index of the next player in the current direction."""
-        return (self.current_player_index + self.direction) % len(self.players)
+        """Index of the next active (non-finished) player in the current direction."""
+        n = len(self.players)
+        idx = (self.current_player_index + self.direction) % n
+        guard = n
+        while guard > 0 and self.players[idx].id in self.finished_player_ids:
+            idx = (idx + self.direction) % n
+            guard -= 1
+        return idx
 
     def _advance_turn(self) -> None:
         self.current_player_index = self._next_index()
@@ -591,40 +632,67 @@ class GameState:
         if self.status != GameStatus.PLAYING:
             return False
 
-        online_players = [p for p in self.players if p.is_connected]
-        connected = len(online_players)
+        # Only consider active (non-finished) players
+        active_players   = [p for p in self.players if p.id not in self.finished_player_ids]
+        online_active    = [p for p in active_players if p.is_connected]
 
-        if connected == 0:
-            return False  # everyone offline — don't loop forever
+        if not online_active:
+            return False  # all active players offline — don't loop forever
 
-        # Last player standing wins
-        if connected == 1:
-            winner = online_players[0]
+        # If only 1 active player remains (regardless of connection), end game
+        if len(active_players) <= 1:
+            if active_players:
+                last_rank = len(self.placements) + 1
+                last = active_players[0]
+                self.placements.append({"rank": last_rank, "id": last.id, "name": last.name})
+                self.finished_player_ids.add(last.id)
             self.status    = GameStatus.FINISHED
-            self.winner    = winner.name
-            self.winner_id = winner.id
-            self._log(f"🏆 {winner.name} wins — all other players disconnected!")
+            self.winner    = self.placements[0]["name"]
+            self.winner_id = self.placements[0]["id"]
+            self._log(f"🏆 Game over! {self.winner} takes the crown!")
             return True
 
+        # Last online active player wins (others are all offline)
+        if len(online_active) == 1 and len(active_players) > 1:
+            winner = online_active[0]
+            rank = len(self.placements) + 1
+            self.placements.append({"rank": rank, "id": winner.id, "name": winner.name})
+            self.finished_player_ids.add(winner.id)
+            # Remaining offline players get subsequent ranks
+            for p in active_players:
+                if p.id not in self.finished_player_ids:
+                    r = len(self.placements) + 1
+                    self.placements.append({"rank": r, "id": p.id, "name": p.name})
+                    self.finished_player_ids.add(p.id)
+            self.status    = GameStatus.FINISHED
+            self.winner    = self.placements[0]["name"]
+            self.winner_id = self.placements[0]["id"]
+            self._log(f"🏆 {winner.name} wins — all other active players disconnected!")
+            return True
+
+        # Skip the current player if they are offline
         skipped = False
-        guard   = len(self.players)
+        guard   = len(active_players)  # max iterations = number of active players
 
         while guard > 0:
             current = self.players[self.current_player_index]
+            # Sanity: skip if this player has already finished (shouldn't happen)
+            if current.id in self.finished_player_ids:
+                self._advance_turn()
+                guard -= 1
+                continue
             if current.is_connected:
                 break
 
             if self.draw_stack > 0:
-                # Offline player auto-absorbs the draw penalty
                 drawn = self._draw_for_player(current, self.draw_stack)
                 self._log(
                     f"⏭ {current.name} is offline — auto-drew {len(drawn)} "
                     f"card{'s' if len(drawn) != 1 else ''} and lost their turn."
                 )
-                self.draw_stack        = 0
+                self.draw_stack          = 0
                 self.challenge_available = False
             else:
-                # Normal turn — draw one card and skip
                 self._draw_for_player(current, 1)
                 self._log(f"⏭ {current.name} is offline — turn skipped.")
 
