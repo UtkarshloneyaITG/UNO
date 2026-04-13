@@ -91,14 +91,15 @@ export default function GameBoard() {
   if (oCount === 1) {
     topOpponents = [orderedOpponents[0]]
   } else if (oCount === 2) {
-    // direction=1:  right(next) · top
-    // direction=-1: left(next)  · top
+    // 3-player game: seats are bottom(you) · right · top — no left seat exists.
+    // CW  (dir=1):  next → right, then top
+    // CCW (dir=-1): next → top,   then right  (play goes upward first)
     if (direction === 1) {
       rightOpponent = orderedOpponents[0]
       topOpponents  = [orderedOpponents[1]]
     } else {
-      leftOpponent  = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1]]
+      topOpponents  = [orderedOpponents[0]]
+      rightOpponent = orderedOpponents[1]
     }
   } else if (oCount === 3) {
     if (direction === 1) {
