@@ -25,12 +25,7 @@ export default function App() {
   const isPlaying  = gameState?.status === 'playing'
   const isFinished = gameState?.status === 'finished'
 
-  if (!unlocked) return <PythonDocs onUnlock={() => {
-    setUnlocked(true)
-    document.title = 'Python — Functional'
-    document.querySelector("link[rel='icon']").href =
-      "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♛</text></svg>"
-  }} />
+  if (!unlocked) return <PythonDocs onUnlock={() => setUnlocked(true)} />
 
   return (
     <div className="app">
