@@ -16,7 +16,7 @@ import { useGameStore } from '../store/gameStore'
 const WS_URL =
   typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_URL
     ? import.meta.env.VITE_WS_URL
-    : `ws://${window.location.hostname}:8000/ws`
+    : 'wss://uno-nq5x.onrender.com/ws'
 
 export function useWebSocket() {
   const wsRef = useRef(null)

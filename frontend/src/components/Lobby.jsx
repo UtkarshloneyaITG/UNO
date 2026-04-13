@@ -34,7 +34,7 @@ export default function Lobby() {
     if (tab !== 'join') return
     const fetchRooms = async () => {
       try {
-        const res = await fetch('/rooms')
+        const res = await fetch('https://uno-nq5x.onrender.com/rooms')
         const data = await res.json()
         setOpenRooms(data.rooms || [])
       } catch {}
