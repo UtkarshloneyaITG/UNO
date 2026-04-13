@@ -103,16 +103,12 @@ export default function GameBoard() {
       {/* ── Top bar ───────────────────────────────────────────────── */}
       <div className="top-bar">
         <div className="top-bar-left">
-          <span className="top-bar-logo">
-            <span style={{color:'var(--c-red)',    textShadow:'0 0 10px var(--g-red)'}}>U</span>
-            <span style={{color:'var(--c-yellow)', textShadow:'0 0 10px var(--g-yellow)'}}>N</span>
-            <span style={{color:'var(--c-blue)',   textShadow:'0 0 10px var(--g-blue)'}}>O</span>
-          </span>
+          <span className="top-bar-logo">UNO</span>
           <span className="room-id-badge">{gameState.room_id}</span>
         </div>
         <div className="top-bar-center">
           {isMyTurn ? (
-            <span className="turn-indicator turn-indicator--mine">Your Turn!</span>
+            <span className="turn-indicator turn-indicator--mine">✦ Your Turn ✦</span>
           ) : (
             <span className="turn-indicator">{currentPlayerName}'s Turn</span>
           )}

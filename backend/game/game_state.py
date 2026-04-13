@@ -225,6 +225,7 @@ class GameState:
             self.uno_called.discard(current.id)
 
         self._apply_card_effects(card, current, chosen_color)
+        self._auto_skip_offline()
         return {"success": True}
 
     def _apply_card_effects(
@@ -307,6 +308,7 @@ class GameState:
             self.challenge_available = False
             self._advance_turn()
             self._log(f"{current.name} drew {len(drawn)} cards.")
+            self._auto_skip_offline()
             return {
                 "success": True,
                 "drawn_cards": [c.to_dict() for c in drawn],
@@ -319,6 +321,7 @@ class GameState:
         if not self.deck:
             # Deck is truly empty — pass turn
             self._advance_turn()
+            self._auto_skip_offline()
             return {"success": True, "no_cards": True, "turn_ends": True}
 
         card = self.deck.pop()
@@ -340,6 +343,7 @@ class GameState:
             self.drawn_card_id = None
             self._advance_turn()
             self._log(f"{current.name} drew a card (unplayable).")
+            self._auto_skip_offline()
             return {
                 "success": True,
                 "drawn_card": card.to_dict(),
@@ -362,6 +366,7 @@ class GameState:
         self.drawn_card_id = None
         self._advance_turn()
         self._log(f"{current.name} passed.")
+        self._auto_skip_offline()
         return {"success": True}
 
     # ------------------------------------------------------------------
@@ -556,6 +561,70 @@ class GameState:
         self.deck = self.discard_pile[:]
         random.shuffle(self.deck)
         self.discard_pile = [top]
+
+    def _auto_skip_offline(self) -> bool:
+        """
+        If the current player is offline, automatically handle their turn
+        so the game never stalls.
+
+        • Pending draw stack  → cards are drawn for them; turn advances.
+        • Normal turn         → one card drawn (as if they passed); turn advances.
+
+        Special case: if only ONE player remains online and all others are
+        offline, that player wins by default (last person standing).
+
+        Repeats until the current player is online, or until every player has
+        been visited once (safety guard for all-offline edge case).
+
+        Returns True if at least one player was skipped (caller should
+        re-broadcast the game state).
+        """
+        if self.status != GameStatus.PLAYING:
+            return False
+
+        online_players = [p for p in self.players if p.is_connected]
+        connected = len(online_players)
+
+        if connected == 0:
+            return False  # everyone offline — don't loop forever
+
+        # Last player standing wins
+        if connected == 1:
+            winner = online_players[0]
+            self.status    = GameStatus.FINISHED
+            self.winner    = winner.name
+            self.winner_id = winner.id
+            self._log(f"🏆 {winner.name} wins — all other players disconnected!")
+            return True
+
+        skipped = False
+        guard   = len(self.players)
+
+        while guard > 0:
+            current = self.players[self.current_player_index]
+            if current.is_connected:
+                break
+
+            if self.draw_stack > 0:
+                # Offline player auto-absorbs the draw penalty
+                drawn = self._draw_for_player(current, self.draw_stack)
+                self._log(
+                    f"⏭ {current.name} is offline — auto-drew {len(drawn)} "
+                    f"card{'s' if len(drawn) != 1 else ''} and lost their turn."
+                )
+                self.draw_stack        = 0
+                self.challenge_available = False
+            else:
+                # Normal turn — draw one card and skip
+                self._draw_for_player(current, 1)
+                self._log(f"⏭ {current.name} is offline — turn skipped.")
+
+            self.drawn_card_id = None
+            self._advance_turn()
+            skipped = True
+            guard  -= 1
+
+        return skipped
 
     def _log(self, message: str) -> None:
         self.last_action = message

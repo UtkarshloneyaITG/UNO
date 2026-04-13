@@ -137,6 +137,15 @@ async def _on_disconnect(ws: WebSocket) -> None:
     if not player_id:
         return
 
+    # Check if this player is the current player BEFORE removing them
+    game_before = room_manager.get_room_for_player(player_id)
+    was_current = (
+        game_before is not None
+        and game_before.status.value == "playing"
+        and game_before.players
+        and game_before.players[game_before.current_player_index].id == player_id
+    )
+
     room_id = room_manager.remove_player(player_id)
     if not room_id:
         return
@@ -146,6 +155,12 @@ async def _on_disconnect(ws: WebSocket) -> None:
         player = game._find_player(player_id)
         name = player.name if player else "A player"
         log.info("Player '%s' disconnected from room %s", name, room_id)
+
+        # If it was their turn, auto-skip so the game doesn't stall
+        if was_current and game.status.value == "playing":
+            game._auto_skip_offline()
+            await _broadcast_game_state(room_id)
+
         await _broadcast_room_state(room_id)
         await _broadcast_to_room(
             room_id, {"type": "player_left", "player_name": name}

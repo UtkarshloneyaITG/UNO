@@ -6,7 +6,11 @@
 import React, { useMemo } from 'react'
 import { useGameStore } from '../store/gameStore'
 
-const CONFETTI_COLORS = ['#c9a227','#e84060','#4488ff','#18e87a','#f0aa20','#a855f7','#e8c84a']
+const CONFETTI_COLORS = [
+  '#f0d060','#f04468','#5294ff','#20ee86',
+  '#f5b820','#b060ff','#ff8040','#e8c84a',
+  '#40d0ff','#ff60a0',
+]
 
 export default function GameOver({ winner, winnerId, myId }) {
   const { leaveRoom } = useGameStore()
@@ -14,14 +18,15 @@ export default function GameOver({ winner, winnerId, myId }) {
 
   const confetti = useMemo(() => {
     if (!isWinner) return []
-    return Array.from({ length: 36 }, (_, i) => ({
+    return Array.from({ length: 60 }, (_, i) => ({
       id: i,
-      left: `${((i * 97) % 100)}%`,
-      delay: `${((i * 0.09) % 1.3).toFixed(2)}s`,
-      duration: `${(1.3 + (i * 0.13) % 1.4).toFixed(2)}s`,
+      left: `${((i * 97 + i * 13) % 100).toFixed(1)}%`,
+      delay: `${((i * 0.07) % 1.6).toFixed(2)}s`,
+      duration: `${(1.2 + (i * 0.11) % 1.5).toFixed(2)}s`,
       color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      size: `${6 + (i * 3) % 9}px`,
+      size: `${5 + (i * 4) % 10}px`,
       isCircle: i % 3 === 0,
+      rotation: `${(i * 47) % 360}deg`,
     }))
   }, [isWinner])
 
@@ -40,20 +45,22 @@ export default function GameOver({ winner, winnerId, myId }) {
                 background: p.color,
                 animationDuration: p.duration,
                 animationDelay: p.delay,
+                transform: `rotate(${p.rotation})`,
               }}
             />
           ))}
         </div>
       )}
       <div className="game-over-card">
-        <div className="game-over-emoji">{isWinner ? '🏆' : '😔'}</div>
+        <div className="game-over-emoji">{isWinner ? '🏆' : '🎭'}</div>
         <h2 className="game-over-title">
-          {isWinner ? 'You Win!' : `${winner} Wins!`}
+          {isWinner ? 'Victory!' : `${winner} Wins!`}
         </h2>
+        <div className="game-over-divider" />
         <p className="game-over-sub">
           {isWinner
-            ? 'Congratulations! You played all your cards.'
-            : `Better luck next time!`}
+            ? 'Magnificent! You played all your cards and claimed the throne.'
+            : `A worthy champion. Fortune may favour you next round.`}
         </p>
         <button
           className="btn btn--primary btn--large"

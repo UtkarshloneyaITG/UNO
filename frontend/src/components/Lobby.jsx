@@ -54,20 +54,19 @@ export default function Lobby() {
     return (
       <div className="lobby">
         <div className="lobby-card waiting-room">
-          <h1 className="logo">
-            <span className="l-u">U</span>
-            <span className="l-n">N</span>
-            <span className="l-o">O</span>
-          </h1>
+          <h1 className="logo">UNO</h1>
+
           <div className="room-code-display">
             Room Code
             <span className="room-code">{rs.room_id || roomId}</span>
           </div>
           <p className="room-hint">Share this code with friends to join!</p>
 
+          <div className="lobby-divider">✦</div>
+
           <div className="player-list">
-            <h3>Players ({players.length}/6)</h3>
-            {players.map((p, i) => (
+            <div className="player-list-label">Players ({players.length}/6)</div>
+            {players.map((p) => (
               <div key={p.id} className="player-row">
                 <span className="player-avatar">{p.name.charAt(0).toUpperCase()}</span>
                 <span className="player-name">{p.name}</span>
@@ -107,12 +106,16 @@ export default function Lobby() {
   return (
     <div className="lobby">
       <div className="lobby-card">
-        <h1 className="logo">
-          <span className="l-u">U</span>
-          <span className="l-n">N</span>
-          <span className="l-o">O</span>
-        </h1>
-        <p className="logo-sub">Real-time Multiplayer</p>
+        <h1 className="logo">UNO</h1>
+        <p className="logo-sub">Royal Chamber</p>
+
+        {/* Suit decorations */}
+        <div className="lobby-suits" aria-hidden="true">
+          <span className="lobby-suit">♥</span>
+          <span className="lobby-suit">♠</span>
+          <span className="lobby-suit">♦</span>
+          <span className="lobby-suit">♣</span>
+        </div>
 
         {/* Tabs */}
         <div className="tabs">

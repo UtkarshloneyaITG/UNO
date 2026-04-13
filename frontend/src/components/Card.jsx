@@ -42,7 +42,9 @@ export default function Card({
   if (faceDown) {
     return (
       <div className={`card card--back ${isMini ? 'card--mini' : ''}`}>
-        <div className="card-back-pattern">UNO</div>
+        <div className="card-back-inner">
+          <div className="card-back-pattern">UNO</div>
+        </div>
       </div>
     )
   }
