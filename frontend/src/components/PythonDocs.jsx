@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 
-const SECRET = 'uno@zenova.com'
+const SECRET = 'python@secret.com'
 
 export default function PythonDocs({ onUnlock }) {
   const [email, setEmail]           = useState('')

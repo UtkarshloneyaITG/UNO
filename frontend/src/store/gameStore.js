@@ -96,7 +96,18 @@ export const useGameStore = create((set, get) => ({
 
       // ── Live game state (personalised) ───────────────────────────────────
       case 'game_state': {
-        set({ gameState: message.state })
+        const newState = message.state
+        const { playerId } = get()
+
+        // Show a toast when this player's turn was just skipped
+        if (
+          newState.skipped_player_id &&
+          newState.skipped_player_id === playerId
+        ) {
+          get().setNotification('⊘ Your turn was skipped!')
+        }
+
+        set({ gameState: newState })
         break
       }
 

@@ -46,6 +46,7 @@ class GameState:
         self.host_player_id: Optional[str] = None
         self.last_action: str = ""
         self.action_log: List[str] = []
+        self.skipped_player_id: Optional[str] = None   # set when a Skip card is played
 
     # ------------------------------------------------------------------
     # Room management
@@ -235,18 +236,21 @@ class GameState:
 
         if card.card_type == CardType.NUMBER:
             self.current_color = card.color
+            self.skipped_player_id = None
             self._advance_turn()
             self._log(f"{name} played {card.display_name()}.")
 
         elif card.card_type == CardType.SKIP:
             self.current_color = card.color
             skipped = self.players[self._next_index()]
+            self.skipped_player_id = skipped.id
             self._advance_turn()   # land on the skipped player
             self._advance_turn()   # skip past them
             self._log(f"{name} played Skip — {skipped.name} is skipped!")
 
         elif card.card_type == CardType.REVERSE:
             self.current_color = card.color
+            self.skipped_player_id = None
             self.direction *= -1
             if len(self.players) == 2:
                 # Reverse acts as Skip in a 2-player game
@@ -257,6 +261,7 @@ class GameState:
 
         elif card.card_type == CardType.DRAW_TWO:
             self.current_color = card.color
+            self.skipped_player_id = None
             self.draw_stack += 2
             next_player = self.players[self._next_index()]
             self._advance_turn()
@@ -267,6 +272,7 @@ class GameState:
         elif card.card_type == CardType.WILD:
             self.previous_color = self.current_color
             self.current_color = Color(chosen_color)
+            self.skipped_player_id = None
             self.challenge_available = False
             self._advance_turn()
             self._log(f"{name} played Wild — colour changed to {chosen_color}!")
@@ -274,6 +280,7 @@ class GameState:
         elif card.card_type == CardType.WILD_DRAW_FOUR:
             self.previous_color = self.current_color
             self.current_color = Color(chosen_color)
+            self.skipped_player_id = None
             self.draw_stack += 4
             self.challenge_available = True
             self.last_wild_draw_four_player_id = player.id
@@ -364,6 +371,7 @@ class GameState:
             return {"success": False, "error": "Nothing to pass — you haven't drawn a card."}
 
         self.drawn_card_id = None
+        self.skipped_player_id = None
         self._advance_turn()
         self._log(f"{current.name} passed.")
         self._auto_skip_offline()
@@ -487,6 +495,7 @@ class GameState:
             "winner_id": self.winner_id,
             "challenge_available": self.challenge_available,
             "drawn_card_id": self.drawn_card_id,
+            "skipped_player_id": self.skipped_player_id,
             "last_action": self.last_action,
             "action_log": self.action_log[-15:],
             "host_player_id": self.host_player_id,
