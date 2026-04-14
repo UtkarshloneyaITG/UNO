@@ -99,11 +99,11 @@ export default function PlayerHand({ onCardPlay }) {
       {/* Action buttons */}
       {isMyTurn && (
         <div className="hand-actions">
-          {!drawnCardId && (
+          {/* {!drawnCardId && (
             <button className="btn btn--draw" onClick={drawCard}>
               {drawStack > 0 ? `Draw ${drawStack} Cards` : 'Draw Card'}
             </button>
-          )}
+          )} */}
           {drawnCardId && (
             <button className="btn btn--pass" onClick={passTurn}>
               Pass Turn
