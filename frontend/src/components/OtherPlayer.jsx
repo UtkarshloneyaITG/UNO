@@ -31,7 +31,7 @@ export default function OtherPlayer({ player, isCurrentTurn, position = 'top' })
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (canCatch) {
-      timerRef.current = setTimeout(() => setShowCatch(true), 300)
+      timerRef.current = setTimeout(() => setShowCatch(true), 1000)
     } else {
       clearTimeout(timerRef.current)
       setShowCatch(false)
