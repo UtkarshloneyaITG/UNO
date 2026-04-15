@@ -59,7 +59,7 @@ class GameState:
         """Add a player during the lobby phase. Returns False if full or in-game."""
         if self.status != GameStatus.WAITING:
             return False
-        if len(self.players) >= 6:
+        if len(self.players) >= 7:
             return False
         self.players.append(player)
         if not self.host_player_id:
@@ -95,8 +95,8 @@ class GameState:
         """Initialise the deck, deal cards, and begin play."""
         if len(self.players) < 2:
             return {"success": False, "error": "Need at least 2 players to start."}
-        if len(self.players) > 6:
-            return {"success": False, "error": "Maximum 6 players allowed."}
+        if len(self.players) > 7:
+            return {"success": False, "error": "Maximum 7 players allowed."}
 
         # Reset game state
         self.deck = create_deck()
@@ -562,7 +562,7 @@ class GameState:
             "room_id": self.room_id,
             "status": self.status.value,
             "host_player_id": self.host_player_id,
-            "can_start": 2 <= len(self.players) <= 6,
+            "can_start": 2 <= len(self.players) <= 7,
             "players": [
                 {"id": p.id, "name": p.name, "is_connected": p.is_connected}
                 for p in self.players

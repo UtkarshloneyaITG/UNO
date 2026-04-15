@@ -1,50 +1,53 @@
 /**
- * GameBoard — table-layout in-game screen.
+ * GameBoard — 3D round-table casino layout.
  *
- * Table structure (mirrors a physical card table):
+ * Visual structure:
  *
- *   ┌────────────────────────────────────────┐
- *   │           top-bar                      │
- *   ├──────┬─────────────────────┬───────────┤
- *   │      │   Top opponent(s)   │           │
- *   │ Left ├─────────────────────┤  Right    │
- *   │      │  Draw · Dir · Disc  │           │
- *   ├──────┴─────────────────────┴───────────┤
- *   │       Alerts · Log                     │
- *   ├────────────────────────────────────────┤
- *   │       Your hand                        │
- *   └────────────────────────────────────────┘
+ *   ┌──────────────────────────────────────────────────┐
+ *   │  top-bar: Logo | Turn banner | Leave             │
+ *   ├──────────────────────────────────────────────────┤
+ *   │                                                  │
+ *   │    [Top opponents]    [Top opponents]            │
+ *   │                                                  │
+ *   │  [Left]  ╔══════════════════╗  [Right]          │
+ *   │          ║  Draw · Dir · Disc║                   │
+ *   │          ╚══════════════════╝                   │
+ *   │        ↑ Round green felt table ↑               │
+ *   ├──────────────────────────────────────────────────┤
+ *   │  Alerts · Log                                    │
+ *   ├──────────────────────────────────────────────────┤
+ *   │  Your hand (arc fan)                             │
+ *   └──────────────────────────────────────────────────┘
+ *
+ * Seating logic is identical to the original — we only change
+ * the visual wrapper elements, not the turn-order calculation.
  */
 
-import React, { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useGameStore } from '../store/gameStore'
-import OtherPlayer from './OtherPlayer'
-import DiscardPile from './DiscardPile'
-import DrawPile from './DrawPile'
-import PlayerHand from './PlayerHand'
-import GameLog from './GameLog'
-import FlyingCard from './FlyingCard'
-// GameOver is rendered at the App root level — not here
+import OtherPlayer    from './OtherPlayer'
+import DiscardPile    from './DiscardPile'
+import DrawPile       from './DrawPile'
+import PlayerHand     from './PlayerHand'
+import FlyingCard     from './FlyingCard'
+import TurnAnnouncer  from './TurnAnnouncer'
+import HintBar        from './HintBar'
 
 const DIR_ICON = { 1: '↻', [-1]: '↺' }
 
 export default function GameBoard() {
   const { gameState, playerId, leaveRoom } = useGameStore()
-  const [logOpen, setLogOpen] = useState(false)
-  // Draw animation: pile → hand
-  const [flyFrom, setFlyFrom] = useState(null)
-  // Play animation: hand → discard pile
-  const [playFly, setPlayFly] = useState(null)   // { from: DOMRect, to: DOMRect }
+  const [flyFrom,  setFlyFrom]  = useState(null)
+  const [playFly,  setPlayFly]  = useState(null)
   const discardRef = useRef(null)
 
-  const handleDrawAnimate = useCallback((rect) => { setFlyFrom(rect) }, [])
-  const handleFlyDone     = useCallback(() => { setFlyFrom(null) }, [])
-
-  const handleCardPlay = useCallback((fromRect) => {
+  const handleDrawAnimate = useCallback((rect) => setFlyFrom(rect), [])
+  const handleFlyDone     = useCallback(() => setFlyFrom(null), [])
+  const handleCardPlay    = useCallback((fromRect) => {
     const toRect = discardRef.current?.getBoundingClientRect()
     if (fromRect && toRect) setPlayFly({ from: fromRect, to: toRect })
   }, [])
-  const handlePlayFlyDone = useCallback(() => { setPlayFly(null) }, [])
+  const handlePlayFlyDone = useCallback(() => setPlayFly(null), [])
 
   if (!gameState) return null
 
@@ -56,111 +59,89 @@ export default function GameBoard() {
     discard_top,
     draw_pile_count,
     draw_stack,
-    action_log = [],
   } = gameState
 
-  const isMyTurn  = current_player_id === playerId
+  const isMyTurn = current_player_id === playerId
 
-  // ── Turn-order seating ──────────────────────────────────────────────────
-  // Walk the players array from our seat in the current direction so that
-  // the opponent who plays immediately after us always sits to the right
-  // (direction=1 / clockwise) or to the left (direction=-1 / CCW).
+  // ── Fixed-seat seating ─────────────────────────────────────────────
+  // Always walk clockwise (+1) regardless of current direction.
+  // Positions never change when a Reverse card is played — only the
+  // direction arrow flips. This mirrors a real round table.
   //
-  // Clockwise  layout: right → top... → left
-  // CCW layout:        left  → top... → right
+  // Seat mapping (always clockwise from me):
+  //   index 0       → right seat  (first clockwise neighbour)
+  //   index 1..last-1 → top row   (far opponents)
+  //   index last    → left seat   (last clockwise = first CCW neighbour)
   const myIndex = players.findIndex((p) => p.id === playerId)
-  const n = players.length
+  const n       = players.length
 
-  // orderedOpponents[0] = next player after me, [1] after that, etc.
   const orderedOpponents = []
   if (myIndex !== -1) {
     for (let step = 1; step < n; step++) {
-      const idx = ((myIndex + step * direction) % n + n) % n
-      orderedOpponents.push(players[idx])
+      orderedOpponents.push(players[(myIndex + step) % n])
     }
   } else {
-    // Fallback: just use array order (shouldn't happen)
     players.forEach((p) => { if (p.id !== playerId) orderedOpponents.push(p) })
   }
 
   const oCount = orderedOpponents.length
-  let topOpponents = []
+  let topOpponents  = []
   let leftOpponent  = null
   let rightOpponent = null
 
   if (oCount === 1) {
     topOpponents = [orderedOpponents[0]]
   } else if (oCount === 2) {
-    // 3-player game: seats are bottom(you) · right · top — no left seat exists.
-    // CW  (dir=1):  next → right, then top
-    // CCW (dir=-1): next → top,   then right  (play goes upward first)
-    if (direction === 1) {
-      rightOpponent = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1]]
-    } else {
-      topOpponents  = [orderedOpponents[0]]
-      rightOpponent = orderedOpponents[1]
-    }
+    rightOpponent = orderedOpponents[0]
+    topOpponents  = [orderedOpponents[1]]
   } else if (oCount === 3) {
-    if (direction === 1) {
-      rightOpponent = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1]]
-      leftOpponent  = orderedOpponents[2]
-    } else {
-      leftOpponent  = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1]]
-      rightOpponent = orderedOpponents[2]
-    }
+    rightOpponent = orderedOpponents[0]
+    topOpponents  = [orderedOpponents[1]]
+    leftOpponent  = orderedOpponents[2]
   } else if (oCount === 4) {
-    if (direction === 1) {
-      rightOpponent = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1], orderedOpponents[2]]
-      leftOpponent  = orderedOpponents[3]
-    } else {
-      leftOpponent  = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1], orderedOpponents[2]]
-      rightOpponent = orderedOpponents[3]
-    }
-  } else if (oCount >= 5) {
-    if (direction === 1) {
-      rightOpponent = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3]]
-      leftOpponent  = orderedOpponents[4]
-    } else {
-      leftOpponent  = orderedOpponents[0]
-      topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3]]
-      rightOpponent = orderedOpponents[4]
-    }
+    rightOpponent = orderedOpponents[0]
+    topOpponents  = [orderedOpponents[1], orderedOpponents[2]]
+    leftOpponent  = orderedOpponents[3]
+  } else if (oCount === 5) {
+    rightOpponent = orderedOpponents[0]
+    topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3]]
+    leftOpponent  = orderedOpponents[4]
+  } else if (oCount >= 6) {
+    rightOpponent = orderedOpponents[0]
+    topOpponents  = [orderedOpponents[1], orderedOpponents[2], orderedOpponents[3], orderedOpponents[4]]
+    leftOpponent  = orderedOpponents[5]
   }
-
-  const currentPlayerName =
-    players.find((p) => p.id === current_player_id)?.name ?? ''
 
   return (
     <div className="game-board">
-      {flyFrom  && <FlyingCard from={flyFrom} onDone={handleFlyDone} variant="draw" />}
-      {playFly  && <FlyingCard from={playFly.from} to={playFly.to} onDone={handlePlayFlyDone} variant="play" />}
+      {/* ── Flying card animations ─────────────────────────────────── */}
+      {flyFrom && (
+        <FlyingCard from={flyFrom} onDone={handleFlyDone} variant="draw" />
+      )}
+      {playFly && (
+        <FlyingCard from={playFly.from} to={playFly.to} onDone={handlePlayFlyDone} variant="play" />
+      )}
 
-      {/* ── Top bar ───────────────────────────────────────────────── */}
-      <div className="top-bar">
-        <div className="top-bar-left">
-          <span className="top-bar-logo">UNO</span>
-          <span className="room-id-badge">{gameState.room_id}</span>
-        </div>
-        <div className="top-bar-center">
-          {isMyTurn ? (
-            <span className="turn-indicator turn-indicator--mine">✦ Your Turn ✦</span>
-          ) : (
-            <span className="turn-indicator">{currentPlayerName}'s Turn</span>
-          )}
-        </div>
-        <div className="top-bar-right">
-          <button className="btn btn--ghost btn--sm" onClick={leaveRoom}>Leave</button>
-        </div>
+      {/* ── Top-left HUD ───────────────────────────────────────────── */}
+      <div className="hud-topleft">
+        <span className="hud-logo">UNO</span>
+        <span className="hud-room">{gameState.room_id}</span>
+        <span className="hud-turn">
+          {isMyTurn
+            ? <span className="hud-turn--mine">✦ Your Turn</span>
+            : `${players.find(p => p.id === current_player_id)?.name ?? ''}'s Turn`}
+        </span>
+        <button className="hud-leave" onClick={leaveRoom}>Leave</button>
       </div>
 
-      {/* ── Table grid ────────────────────────────────────────────── */}
+      {/* ── Table scene ────────────────────────────────────────────── */}
       <div className="game-table">
+
+        {/* Decorative round felt table (purely visual, pointer-events: none) */}
+        <div className="table-felt-bg" />
+
+        {/* Ambient ceiling light cone */}
+        <div className="table-light-cone" />
 
         {/* Left column — side opponent */}
         <div className="table-left">
@@ -186,6 +167,7 @@ export default function GameBoard() {
             ))}
           </div>
 
+          {/* Center play area — sits on top of the felt */}
           <div className="play-area">
             <DrawPile
               count={draw_pile_count}
@@ -218,28 +200,14 @@ export default function GameBoard() {
 
       </div>
 
-      {/* ── Alerts & log ──────────────────────────────────────────── */}
-      <div className="game-info">
-        {draw_stack > 0 && isMyTurn && (
-          <div className="draw-alert">
-            ⚠️ You must draw {draw_stack} card{draw_stack !== 1 ? 's' : ''}!{draw_stack === 4 ? ' (or Challenge the +4)' : ''}
-          </div>
-        )}
-        {gameState.last_action && (
-          <div key={gameState.last_action} className="last-action">
-            {gameState.last_action}
-          </div>
-        )}
-        <div className="log-section">
-          <button className="log-toggle" onClick={() => setLogOpen((v) => !v)}>
-            {logOpen ? '▾ Hide Log' : '▸ Show Log'}
-          </button>
-          {logOpen && <GameLog log={action_log} />}
-        </div>
-      </div>
+      {/* ── Contextual hint bar ────────────────────────────────────── */}
+      <HintBar />
 
-      {/* ── Player's hand ─────────────────────────────────────────── */}
+      {/* ── Player's hand ──────────────────────────────────────────── */}
       <PlayerHand onCardPlay={handleCardPlay} />
+
+      {/* ── Turn flash overlay ─────────────────────────────────────── */}
+      <TurnAnnouncer />
     </div>
   )
 }

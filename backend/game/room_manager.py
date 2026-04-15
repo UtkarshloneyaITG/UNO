@@ -67,7 +67,7 @@ class RoomManager:
         if not game.add_player(player):
             if game.status.value != "waiting":
                 return {"success": False, "error": "Game already in progress."}
-            return {"success": False, "error": "Room is full (max 6 players)."}
+            return {"success": False, "error": "Room is full (max 7 players)."}
 
         self._player_room[player.id] = room_id
         return {"success": True, "reconnected": False}

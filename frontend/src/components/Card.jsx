@@ -1,5 +1,5 @@
 /**
- * Card — renders a single UNO card.
+ * Card — renders a single UNO card with 3D depth and gloss.
  *
  * Props:
  *   card        { id, color, card_type, number }
@@ -10,25 +10,22 @@
  *   faceDown    renders the card back (draw pile, hidden hands)
  */
 
-import React from 'react'
 
-// Map card types to display symbols
 const SYMBOLS = {
-  number: (card) => card.number,
-  skip: '⊘',
-  reverse: '↺',
-  draw_two: '+2',
-  wild: 'W',
+  number:         (card) => card.number,
+  skip:           '⊘',
+  reverse:        '↺',
+  draw_two:       '+2',
+  wild:           'W',
   wild_draw_four: '+4',
 }
 
-// Color-to-CSS-class mapping
 const COLOR_CLASS = {
-  red: 'card--red',
-  green: 'card--green',
-  blue: 'card--blue',
+  red:    'card--red',
+  green:  'card--green',
+  blue:   'card--blue',
   yellow: 'card--yellow',
-  wild: 'card--wild',
+  wild:   'card--wild',
 }
 
 export default function Card({
@@ -36,8 +33,8 @@ export default function Card({
   onClick,
   isPlayable = false,
   isSelected = false,
-  isMini = false,
-  faceDown = false,
+  isMini     = false,
+  faceDown   = false,
 }) {
   if (faceDown) {
     return (
@@ -45,6 +42,8 @@ export default function Card({
         <div className="card-back-inner">
           <div className="card-back-pattern">UNO</div>
         </div>
+        {/* Gloss overlay */}
+        <div className="card-gloss" />
       </div>
     )
   }
@@ -59,10 +58,10 @@ export default function Card({
   const classes = [
     'card',
     colorClass,
-    isPlayable ? 'card--playable' : '',
-    isSelected ? 'card--selected' : '',
-    isMini ? 'card--mini' : '',
-    onClick ? 'card--clickable' : '',
+    isPlayable  ? 'card--playable'  : '',
+    isSelected  ? 'card--selected'  : '',
+    isMini      ? 'card--mini'      : '',
+    onClick     ? 'card--clickable' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -81,6 +80,9 @@ export default function Card({
 
       {/* Bottom-right corner (rotated 180°) */}
       <span className="card-corner card-corner--br">{symbol}</span>
+
+      {/* 3D gloss layer — sits above content */}
+      <div className="card-gloss" />
     </div>
   )
 }
@@ -88,10 +90,10 @@ export default function Card({
 function cardTitle(card) {
   if (card.card_type === 'number') return `${card.color} ${card.number}`
   const names = {
-    skip: 'Skip',
-    reverse: 'Reverse',
-    draw_two: 'Draw Two',
-    wild: 'Wild',
+    skip:           'Skip',
+    reverse:        'Reverse',
+    draw_two:       'Draw Two',
+    wild:           'Wild',
     wild_draw_four: 'Wild Draw Four',
   }
   const prefix = card.color === 'wild' ? '' : `${card.color} `
