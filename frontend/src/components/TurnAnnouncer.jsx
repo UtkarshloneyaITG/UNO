@@ -22,10 +22,10 @@ export default function TurnAnnouncer() {
     // Only fire when the turn *changes* to me
     if (curr === playerId && prev !== null && prev !== playerId) {
       let sub = 'Play a matching card or draw from the deck.'
-      if (gameState.draw_stack > 0) {
-        sub = `You must draw ${gameState.draw_stack} card${gameState.draw_stack > 1 ? 's' : ''} — or stack a Draw card!`
-      } else if (gameState.challenge_available) {
-        sub = 'You can challenge the Wild Draw 4 before drawing!'
+      if (gameState.challenge_available) {
+        sub = 'Draw the penalty — or challenge the Wild Draw 4 first!'
+      } else if (gameState.draw_stack > 0) {
+        sub = `You must draw ${gameState.draw_stack} card${gameState.draw_stack > 1 ? 's' : ''} from the deck.`
       }
 
       setInfo({ sub })

@@ -11,6 +11,16 @@
 import React, { useState, useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
 
+// Derive the REST base URL from the same backend as the WebSocket so the
+// open-rooms list and the game connection always point at the same server.
+const WS_URL =
+  typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_URL
+    ? import.meta.env.VITE_WS_URL
+    : 'wss://uno-nq5x.onrender.com/ws'
+const ROOMS_BASE = WS_URL
+  .replace(/^ws/, 'http') // ws:// -> http://, wss:// -> https://
+  .replace(/\/ws$/, '')
+
 export default function Lobby() {
   const {
     isConnected,
@@ -34,7 +44,7 @@ export default function Lobby() {
     if (tab !== 'join') return
     const fetchRooms = async () => {
       try {
-        const res = await fetch('https://uno-nq5x.onrender.com/rooms')
+        const res = await fetch(`${ROOMS_BASE}/rooms`)
         const data = await res.json()
         setOpenRooms(data.rooms || [])
       } catch {}

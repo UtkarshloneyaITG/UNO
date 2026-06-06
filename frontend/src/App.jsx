@@ -1,15 +1,22 @@
 /**
  * App — root component.
  *
- * GameOver is rendered HERE at the app root (not inside GameBoard) so it
- * is guaranteed to be visible even if GameBoard's internal state is stale.
+ * The entire game now lives inside a 3D world (React Three Fiber): the lobby
+ * and the play table are rendered in <Experience/>. Screen-space HUD and
+ * modals (turn flash, hints, colour picker, game over, toasts) are layered
+ * on top of the WebGL canvas — the standard structure for a 3D web game.
+ *
+ * The PythonDocs camouflage gate is intentionally left as a plain webpage.
  */
 
 import React, { useState } from 'react'
 import { useGameStore } from './store/gameStore'
 import { useWebSocket } from './hooks/useWebSocket'
-import Lobby from './components/Lobby'
-import GameBoard from './components/GameBoard'
+import Experience from './three/Experience'
+import GameHud from './components/GameHud'
+import ChatBar from './components/ChatBar'
+import HintBar from './components/HintBar'
+import TurnAnnouncer from './components/TurnAnnouncer'
 import WildColorPicker from './components/WildColorPicker'
 import GameOver from './components/GameOver'
 import PythonDocs from './components/PythonDocs'
@@ -22,33 +29,32 @@ export default function App() {
   const { gameState, playerId, isConnected, showColorPicker, error, notification } =
     useGameStore()
 
-  const isPlaying  = gameState?.status === 'playing'
   const isFinished = gameState?.status === 'finished'
 
   if (!unlocked) return <PythonDocs onUnlock={() => setUnlocked(true)} />
 
   return (
-    <div className="app">
-      {/* ── Atmospheric texture overlay ───────────────────────────── */}
-      <div className="noise-overlay" aria-hidden="true" />
+    <div className="app app--3d">
+      {/* ── 3D world (lobby + table) ───────────────────────────────── */}
+      <div className="canvas-root">
+        <Experience />
+      </div>
 
-      {/* ── Connection banner ─────────────────────────────────────── */}
+      {/* ── Screen-space HUD / overlays ────────────────────────────── */}
       {!isConnected && (
-        <div className="banner banner--offline">
-          Reconnecting to the chamber…
-        </div>
+        <div className="banner banner--offline">Reconnecting to the chamber…</div>
       )}
 
-      {/* ── Error toast ───────────────────────────────────────────── */}
       {error && <div className="toast toast--error">{error}</div>}
-
-      {/* ── Notification toast ────────────────────────────────────── */}
       {notification && <div className="toast toast--info">{notification}</div>}
 
-      {/* ── Wild colour picker overlay ────────────────────────────── */}
+      <GameHud />
+      <HintBar />
+      <ChatBar />
+      <TurnAnnouncer />
+
       {showColorPicker && <WildColorPicker />}
 
-      {/* ── Victory overlay — rendered at root so it always appears ─ */}
       {isFinished && gameState && (
         <GameOver
           winner={gameState.winner}
@@ -56,9 +62,6 @@ export default function App() {
           myId={playerId}
         />
       )}
-
-      {/* ── Main screen ───────────────────────────────────────────── */}
-      {isFinished ? null : isPlaying ? <GameBoard /> : <Lobby />}
     </div>
   )
 }

@@ -47,6 +47,7 @@ class GameState:
         self.last_action: str = ""
         self.action_log: List[str] = []
         self.skipped_player_id: Optional[str] = None   # set when a Skip card is played
+        self.turn_deadline_ms: Optional[int] = None    # epoch ms the current turn must act by
         # Multi-place ranking
         self.placements: List[dict] = []              # [{rank, id, name}] in finish order
         self.finished_player_ids: Set[str] = set()    # players who have emptied their hand
@@ -407,6 +408,26 @@ class GameState:
         return {"success": True}
 
     # ------------------------------------------------------------------
+    # Turn timeout penalty
+    # ------------------------------------------------------------------
+
+    def timeout_penalty(self) -> dict:
+        """Current player ran out of time: draw a penalty and lose the turn."""
+        if self.status != GameStatus.PLAYING or not self.players:
+            return {"success": False}
+        current = self.players[self.current_player_index]
+        amount = self.draw_stack if self.draw_stack > 0 else 2
+        drawn = self._draw_for_player(current, amount)
+        self.draw_stack = 0
+        self.challenge_available = False
+        self.drawn_card_id = None
+        self.skipped_player_id = None
+        self._log(f"⏰ {current.name} ran out of time — draws {len(drawn)} and is skipped.")
+        self._advance_turn()
+        self._auto_skip_offline()
+        return {"success": True}
+
+    # ------------------------------------------------------------------
     # UNO call
     # ------------------------------------------------------------------
 
@@ -525,6 +546,7 @@ class GameState:
             "challenge_available": self.challenge_available,
             "drawn_card_id": self.drawn_card_id,
             "skipped_player_id": self.skipped_player_id,
+            "turn_deadline": self.turn_deadline_ms,
             "placements": list(self.placements),
             "last_action": self.last_action,
             "action_log": self.action_log[-15:],

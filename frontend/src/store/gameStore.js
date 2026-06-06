@@ -29,6 +29,8 @@ export const useGameStore = create((set, get) => ({
   pendingWildCardId: null,    // card ID waiting for colour selection
   error: null,
   notification: null,         // brief toast message
+  bubbles: {},                // player_id -> { text, key } chat/emoji bubbles
+  _bubbleSeq: 0,
 
   // =========================================================================
   // Setters injected / called by the WS hook
@@ -108,6 +110,27 @@ export const useGameStore = create((set, get) => ({
         }
 
         set({ gameState: newState })
+        break
+      }
+
+      // ── Chat / emoji bubble ──────────────────────────────────────────────
+      case 'chat': {
+        const { player_id, text } = message
+        if (!player_id || !text) break
+        const key = get()._bubbleSeq + 1
+        set((s) => ({
+          _bubbleSeq: key,
+          bubbles: { ...s.bubbles, [player_id]: { text, key } },
+        }))
+        // Auto-dismiss after 5s, unless a newer bubble replaced it.
+        setTimeout(() => {
+          set((s) => {
+            if (s.bubbles[player_id]?.key !== key) return {}
+            const next = { ...s.bubbles }
+            delete next[player_id]
+            return { bubbles: next }
+          })
+        }, 5000)
         break
       }
 
@@ -203,6 +226,14 @@ export const useGameStore = create((set, get) => ({
 
   leaveRoom: () => {
     get().sendMessage?.({ type: 'leave_room' })
-    set({ roomId: null, roomState: null, gameState: null, playerId: null })
+    set({ roomId: null, roomState: null, gameState: null, playerId: null, bubbles: {} })
+  },
+
+  // Send a chat line or emoji; it echoes back to everyone (incl. sender) as a
+  // bubble above the relevant player.
+  sendChat: (text) => {
+    const t = (text ?? '').toString().slice(0, 120).trim()
+    if (!t) return
+    get().sendMessage?.({ type: 'chat', text: t })
   },
 }))

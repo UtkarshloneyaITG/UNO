@@ -31,9 +31,11 @@ player_left        { type, player_name }
 player_reconnected { type, player_name }
 """
 
+import asyncio
 import json
 import logging
-from typing import Optional
+import time
+from typing import Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,6 +60,46 @@ app.add_middleware(
 
 manager = ConnectionManager()
 room_manager = RoomManager()
+
+# ── Per-turn countdown ──────────────────────────────────────────────────────
+TURN_SECONDS = 10
+_turn_timers: Dict[str, asyncio.Task] = {}
+
+
+def _schedule_turn_timer(room_id: str) -> None:
+    """(Re)start the 10s turn clock for a room. Called after every broadcast."""
+    old = _turn_timers.pop(room_id, None)
+    if old:
+        old.cancel()
+
+    game = room_manager.get_room(room_id)
+    if not game or game.status.value != "playing":
+        return
+
+    game.turn_deadline_ms = int((time.time() + TURN_SECONDS) * 1000)
+    seq = len(game.action_log)
+    idx = game.current_player_index
+    _turn_timers[room_id] = asyncio.create_task(_turn_timeout(room_id, seq, idx))
+
+
+async def _turn_timeout(room_id: str, seq: int, idx: int) -> None:
+    try:
+        await asyncio.sleep(TURN_SECONDS)
+    except asyncio.CancelledError:
+        return
+
+    game = room_manager.get_room(room_id)
+    if not game or game.status.value != "playing":
+        return
+    # If anything happened (action logged) or the turn moved on, a newer timer
+    # is already in charge — do nothing.
+    if len(game.action_log) != seq or game.current_player_index != idx:
+        return
+
+    result = game.timeout_penalty()
+    if result.get("success"):
+        log.info("Turn timeout penalty applied in room %s", room_id)
+        await _broadcast_game_state(room_id)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +158,7 @@ async def _dispatch(ws: WebSocket, msg: dict) -> None:
         "catch_uno":        _catch_uno,
         "challenge_wild4":  _challenge_wild4,
         "leave_room":       _leave_room,
+        "chat":             _chat,
     }
     handler = handlers.get(t)
     if handler:
@@ -366,6 +409,25 @@ async def _challenge_wild4(ws: WebSocket, _msg: dict) -> None:
     await _broadcast_game_state(game.room_id)
 
 
+async def _chat(ws: WebSocket, msg: dict) -> None:
+    """Broadcast a chat line / emoji to everyone in the room (incl. sender)."""
+    player_id = manager.get_player_id(ws)
+    game = room_manager.get_room_for_player(player_id) if player_id else None
+    if not game or not player_id:
+        return
+
+    text = (msg.get("text") or "").strip()[:120]
+    if not text:
+        return
+
+    player = game._find_player(player_id)
+    name = player.name if player else "?"
+    await _broadcast_to_room(
+        game.room_id,
+        {"type": "chat", "player_id": player_id, "player_name": name, "text": text},
+    )
+
+
 async def _leave_room(ws: WebSocket, _msg: dict) -> None:
     player_id = manager.get_player_id(ws)
     if not player_id:
@@ -399,6 +461,8 @@ async def _broadcast_game_state(room_id: str) -> None:
         for p in game.players
     }
     await manager.broadcast_room(messages)
+    # Reset the turn clock on every state change (= every action).
+    _schedule_turn_timer(room_id)
 
 
 async def _broadcast_room_state(room_id: str) -> None:

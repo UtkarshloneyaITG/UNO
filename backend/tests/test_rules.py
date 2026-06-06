@@ -131,10 +131,11 @@ class TestLobby:
             assert g.add_player(Player(name=f"P{i}")) is True
         assert len(g.players) == 6
 
-    def test_cannot_add_7th_player(self):
+    def test_cannot_add_8th_player(self):
+        # Up to 7 players are allowed; the 8th is rejected.
         g = GameState("R1")
-        for i in range(6):
-            g.add_player(Player(name=f"P{i}"))
+        for i in range(7):
+            assert g.add_player(Player(name=f"P{i}")) is True
         assert g.add_player(Player(name="Extra")) is False
 
     def test_first_player_is_host(self):
@@ -146,9 +147,9 @@ class TestLobby:
         result = g.start_game()
         assert result["success"] is False
 
-    def test_cannot_start_with_more_than_6(self):
+    def test_cannot_start_with_more_than_7(self):
         g = GameState("R1")
-        for i in range(7):
+        for i in range(8):
             g.players.append(Player(name=f"P{i}"))
         result = g.start_game()
         assert result["success"] is False

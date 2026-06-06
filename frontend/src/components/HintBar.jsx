@@ -19,9 +19,16 @@ export default function HintBar() {
 
   if (isMyTurn) {
     if (gameState.draw_stack > 0) {
-      icon = '⚠'
-      text = `Penalty! Draw ${gameState.draw_stack} card${gameState.draw_stack > 1 ? 's' : ''} — or play a matching Draw card to pass it on.`
-      type = 'warning'
+      const n = gameState.draw_stack
+      if (gameState.challenge_available) {
+        icon = '⚡'
+        text = `Wild Draw 4! Draw ${n} cards from the deck — or Challenge if you suspect a bluff.`
+        type = 'challenge'
+      } else {
+        icon = '⚠'
+        text = `Penalty! You must draw ${n} card${n > 1 ? 's' : ''} from the deck (no stacking).`
+        type = 'warning'
+      }
     } else if (gameState.drawn_card_id) {
       icon = '↩'
       text = 'You drew a card — play it if it matches, or press Pass Turn to end your turn.'

@@ -9,8 +9,8 @@ from .card import Card, Color, CardType
 def create_deck() -> List[Card]:
     """
     Build a freshly shuffled standard UNO deck:
-      • 76 coloured cards  (1×0, 2×1-9, 2×Skip, 2×Reverse, 2×Draw Two per colour)
-      • 8  black cards     (4×Wild, 4×Wild Draw Four)
+      • 100 coloured cards (per colour: 1×0, 2×1-9, 2×Skip, 2×Reverse, 2×Draw Two = 25)
+      • 8   black cards     (4×Wild, 4×Wild Draw Four)
     Total: 108 cards
     """
     deck: List[Card] = []

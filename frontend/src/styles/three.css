@@ -1,0 +1,378 @@
+/* ============================================================
+   3D mode — canvas root, in-scene HTML labels, and screen-space
+   HUD overlays layered on top of the WebGL world.
+   ============================================================ */
+
+.app--3d {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #06060a;
+}
+
+.canvas-root {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.canvas-root canvas {
+  display: block;
+  touch-action: none;
+}
+
+/* Let HUD chips capture clicks even though the wrapper ignores them */
+.app--3d .hud-topleft { pointer-events: none; }
+.app--3d .hud-leave,
+.app--3d .hud-room,
+.app--3d .hud-turn { pointer-events: auto; }
+
+/* Hint bar becomes a floating pill at the bottom of the screen */
+.app--3d .hint-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  max-width: min(680px, 92vw);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  backdrop-filter: blur(6px);
+  z-index: 25;
+  pointer-events: none;
+}
+
+/* ── In-scene drei <Html> labels ─────────────────────────────── */
+.pile3d-label,
+.pile3d-color,
+.dir3d {
+  font-family: var(--fd, system-ui, sans-serif);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.pile3d-label {
+  font-size: 13px;
+  color: #e9e2c4;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(201,162,39,0.35);
+}
+.pile3d-label--penalty {
+  color: #fff;
+  background: rgba(200,40,40,0.85);
+  border-color: #ff8a8a;
+  animation: pile3d-pulse 0.9s ease-in-out infinite;
+}
+@keyframes pile3d-pulse {
+  50% { transform: scale(1.08); filter: brightness(1.2); }
+}
+
+.pile3d-color {
+  font-size: 12px;
+  color: #fff;
+  padding: 3px 12px;
+  border-radius: 6px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+.dir3d {
+  font-size: 12px;
+  color: #ffd84d;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+}
+
+/* ── Opponent nameplate ──────────────────────────────────────── */
+.op3d {
+  width: 150px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(10,10,16,0.82);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  color: #eee;
+  font-family: var(--fb, system-ui, sans-serif);
+  text-align: center;
+  user-select: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.op3d--active {
+  border-color: rgba(255,216,77,0.8);
+  box-shadow: 0 0 22px rgba(255,216,77,0.35);
+}
+.op3d--offline { opacity: 0.55; filter: grayscale(0.6); }
+
+.op3d-turn {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: #ffd84d; margin-bottom: 4px;
+}
+.op3d-row { display: flex; align-items: center; gap: 8px; }
+.op3d-avatar {
+  width: 34px; height: 34px; flex: none;
+  border-radius: 50%; border: 2px solid;
+  display: grid; place-items: center;
+  font-weight: 800; font-size: 15px; color: #fff;
+}
+.op3d-meta { display: flex; flex-direction: column; text-align: left; min-width: 0; }
+.op3d-name {
+  font-weight: 700; font-size: 13px; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 95px;
+}
+.op3d-count { font-size: 11px; color: #b9b9c4; }
+.op3d-uno {
+  margin-top: 5px; font-weight: 900; font-size: 12px; letter-spacing: 0.1em;
+  color: #ffd84d; text-shadow: 0 0 8px rgba(255,216,77,0.6);
+}
+.op3d-badge {
+  margin-top: 4px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.12em; color: #ff8a8a;
+}
+.op3d-catch {
+  margin-top: 6px; width: 100%;
+  padding: 5px 8px; border: none; border-radius: 8px; cursor: pointer;
+  font-weight: 800; font-size: 12px; letter-spacing: 0.04em; color: #fff;
+  background: linear-gradient(145deg, #e8431f, #b81d0c);
+  box-shadow: 0 4px 14px rgba(232,67,31,0.5);
+  animation: pile3d-pulse 0.8s ease-in-out infinite;
+}
+.op3d-catch:hover { filter: brightness(1.12); }
+
+/* ── Player hand action strip ────────────────────────────────── */
+.hand3d-actions {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  user-select: none;
+}
+.hand3d-count {
+  font-family: var(--fd, system-ui, sans-serif);
+  font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #d9cfa6;
+  padding: 3px 12px; border-radius: 999px;
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(201,162,39,0.25);
+  white-space: nowrap;
+}
+.hand3d-buttons { display: flex; gap: 10px; align-items: center; }
+.uno-btn--3d {
+  position: static !important;
+  margin: 0 !important;
+}
+
+/* ── Glassmorphism nameplate + glowing name (overrides above) ──── */
+.op3d {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 120px;
+  width: auto;
+  padding: 8px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.10);
+  -webkit-backdrop-filter: blur(13px) saturate(160%);
+  backdrop-filter: blur(13px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.op3d-name {
+  font-family: var(--fd, system-ui, sans-serif);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+.op3d-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* ── Centre-of-table turn clock ────────────────────────────────── */
+.tclock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  pointer-events: none;
+}
+.tclock-ring {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  transition: background 0.4s linear;
+}
+.tclock-face {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(8, 10, 16, 0.92);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tclock-num {
+  font-family: var(--fd, system-ui, sans-serif);
+  font-weight: 900;
+  font-size: 24px;
+  color: #fff;
+  line-height: 1;
+}
+.tclock-label {
+  font-family: var(--fd, system-ui, sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+.tclock--danger .tclock-num {
+  color: #ff6b6b;
+  animation: pile3d-pulse 0.7s ease-in-out infinite;
+}
+
+/* ── Chat / emoji speech bubble above a player ─────────────────── */
+.op3d-bubble {
+  position: relative;
+  width: max-content;
+  max-width: 210px;
+  padding: 9px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  animation: bubblePop 0.22s ease-out;
+}
+.op3d-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 9px solid rgba(255, 255, 255, 0.16);
+}
+@keyframes bubblePop {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Chat bar (bottom-right HUD overlay) ───────────────────────── */
+.chatbar {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.chatbar > * { pointer-events: auto; }
+.chatbar-echo {
+  max-width: 240px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 15px;
+}
+.chatbar-emojis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 268px;
+  justify-content: flex-end;
+}
+.chatbar-emoji {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(20, 20, 28, 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 19px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.chatbar-emoji:hover { transform: translateY(-2px) scale(1.12); background: rgba(45, 45, 60, 0.75); }
+.chatbar-form { display: flex; gap: 6px; }
+.chatbar-toggle {
+  width: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(20, 20, 28, 0.6);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 18px;
+  cursor: pointer;
+}
+.chatbar-toggle:hover { background: rgba(45, 45, 60, 0.75); }
+.chatbar-input {
+  width: 200px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(15, 15, 22, 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+.chatbar-input::placeholder { color: rgba(255, 255, 255, 0.45); }
+.chatbar-send {
+  padding: 9px 15px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  color: #1a1a1a;
+  background: linear-gradient(145deg, #ffe87c, #c9a227);
+}
+.chatbar-send:hover { filter: brightness(1.08); }
+
+/* ── 3D lobby glass panel ────────────────────────────────────── */
+.lobby3d-card {
+  width: 360px;
+  max-width: 88vw;
+  padding: 22px 26px 26px;
+  border-radius: 18px;
+  background: linear-gradient(160deg, rgba(20,18,28,0.94), rgba(8,8,14,0.96));
+  border: 1px solid rgba(201,162,39,0.35);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.7), inset 0 0 40px rgba(201,162,39,0.06);
+  text-align: center;
+  user-select: none;
+  font-family: var(--fb, system-ui, sans-serif);
+}
+.lobby3d-card .logo { margin-top: 0; }
+.lobby3d-card .open-rooms { max-height: 160px; overflow-y: auto; }

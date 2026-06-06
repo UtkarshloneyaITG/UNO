@@ -1,0 +1,122 @@
+/**
+ * Card3D — a single physical UNO card with genuinely rounded corners.
+ *
+ * Geometry is a rounded-rectangle extrusion (white edge wall) with two rounded
+ * face planes: the front shows the card art (+Z), the back shows the UNO back
+ * (-Z). Orientation (face up / down, tilt) is controlled by the parent <group>.
+ *
+ * Props:
+ *   card        card object, or null for a pure back (draw pile / hidden hand)
+ *   faceDown    force the back texture on the front face
+ *   playable    glowing outline + lift to signal a legal play
+ *   dimmed      slightly darken non-playable cards
+ *   onClick     pointer click handler (raycast)
+ *   ...group props (position/rotation/scale) are spread onto the wrapper group
+ */
+import { useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { Outlines } from '@react-three/drei'
+import * as THREE from 'three'
+import { CARD_T, getCardFaceTexture, getCardBackTexture } from './cardTextures'
+import { getCardGeometries } from './cardGeometry'
+
+const EDGE_COLOR = '#f4f4f4'
+const FACE_OFFSET = CARD_T / 2 + 0.0012
+
+export default function Card3D({
+  card = null,
+  faceDown = false,
+  playable = false,
+  dimmed = false,
+  onClick,
+  liftOnHover = true,
+  renderOrder = 0,
+  ...groupProps
+}) {
+  const groupRef = useRef()
+  const [hovered, setHovered] = useState(false)
+
+  const { front, back, body } = getCardGeometries()
+  const backTex = getCardBackTexture()
+  const faceTex = useMemo(
+    () => (card && !faceDown ? getCardFaceTexture(card) : backTex),
+    [card, faceDown, backTex],
+  )
+
+  const { edgeMat, frontMat, backMat } = useMemo(() => {
+    return {
+      edgeMat: new THREE.MeshLambertMaterial({ color: EDGE_COLOR }),
+      frontMat: new THREE.MeshLambertMaterial({ map: faceTex }),
+      backMat: new THREE.MeshLambertMaterial({ map: backTex }),
+    }
+  }, [faceTex, backTex])
+
+  const baseY = groupProps.position ? groupProps.position[1] : 0
+
+  useFrame(() => {
+    if (!groupRef.current || !liftOnHover) return
+    const target = hovered && (playable || onClick) ? baseY + 0.22 : baseY
+    groupRef.current.position.y += (target - groupRef.current.position.y) * 0.25
+  })
+
+  const interactive = !!onClick
+
+  return (
+    <group ref={groupRef} {...groupProps}>
+      {/* Rounded white body / edge — also the raycast target */}
+      <mesh
+        geometry={body}
+        material={edgeMat}
+        renderOrder={renderOrder}
+        onClick={
+          interactive
+            ? (e) => {
+                e.stopPropagation()
+                onClick(e)
+              }
+            : undefined
+        }
+        onPointerOver={
+          interactive
+            ? (e) => {
+                e.stopPropagation()
+                setHovered(true)
+                document.body.style.cursor = 'pointer'
+              }
+            : undefined
+        }
+        onPointerOut={
+          interactive
+            ? () => {
+                setHovered(false)
+                document.body.style.cursor = 'auto'
+              }
+            : undefined
+        }
+      >
+        {playable && (
+          <Outlines thickness={0.05} color={hovered ? '#fff6b0' : '#ffd84d'} />
+        )}
+      </mesh>
+
+      {/* Front face art */}
+      <mesh geometry={front} material={frontMat} position={[0, 0, FACE_OFFSET]} renderOrder={renderOrder} />
+
+      {/* Back face (flipped to face -Z) */}
+      <mesh
+        geometry={back}
+        material={backMat}
+        rotation={[0, Math.PI, 0]}
+        position={[0, 0, -FACE_OFFSET]}
+        renderOrder={renderOrder}
+      />
+
+      {/* Dim veil over non-playable cards */}
+      {dimmed && (
+        <mesh geometry={front} position={[0, 0, FACE_OFFSET + 0.001]}>
+          <meshBasicMaterial color="#000000" transparent opacity={0.32} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
+  )
+}
