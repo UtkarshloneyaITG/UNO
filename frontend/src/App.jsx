@@ -15,6 +15,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import Experience from './three/Experience'
 import GameHud from './components/GameHud'
 import ChatBar from './components/ChatBar'
+import TurnTimerBar from './components/TurnTimerBar'
 import HintBar from './components/HintBar'
 import TurnAnnouncer from './components/TurnAnnouncer'
 import WildColorPicker from './components/WildColorPicker'
@@ -49,6 +50,7 @@ export default function App() {
       {notification && <div className="toast toast--info">{notification}</div>}
 
       <GameHud />
+      <TurnTimerBar />
       <HintBar />
       <ChatBar />
       <TurnAnnouncer />

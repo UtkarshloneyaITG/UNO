@@ -14,6 +14,7 @@ import { TABLE_TOP_Y as TOP_Y } from './layout'
 export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDraw = false }) {
   const drawCard = useGameStore((s) => s.drawCard)
   const ringRef = useRef()
+  const coneRef = useRef()
 
   const stack = useMemo(() => {
     const n = count > 0 ? 3 : 0
@@ -25,11 +26,17 @@ export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDra
   const urgent = mustDraw || drawStack > 0
   const ringColor = urgent ? '#ff6060' : '#ffd84d'
 
-  // Pulse the highlight ring (stronger when you must draw).
+  // Pulse the ring, and bob/spin the "draw here" cone.
   useFrame((state) => {
-    if (!ringRef.current) return
-    const amp = urgent ? 0.14 : 0.06
-    ringRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 4) * amp)
+    const t = state.clock.elapsedTime
+    if (ringRef.current) {
+      const amp = urgent ? 0.14 : 0.06
+      ringRef.current.scale.setScalar(1 + Math.sin(t * 4) * amp)
+    }
+    if (coneRef.current) {
+      coneRef.current.position.y = baseY + 1.35 + Math.sin(t * 3) * 0.12
+      coneRef.current.rotation.y += 0.03
+    }
   })
 
   return (
@@ -40,6 +47,16 @@ export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDra
           <ringGeometry args={[0.95, 1.25, 44]} />
           <meshBasicMaterial color={ringColor} transparent opacity={0.9} />
         </mesh>
+      )}
+
+      {/* Cone pointing down at the deck when you need to draw */}
+      {urgent && (
+        <group ref={coneRef} position={[0, baseY + 1.35, 0]}>
+          <mesh rotation={[Math.PI, 0, 0]}>
+            <coneGeometry args={[0.3, 0.62, 5]} />
+            <meshStandardMaterial color="#ff5a5a" emissive="#ff3030" emissiveIntensity={0.9} roughness={0.35} />
+          </mesh>
+        </group>
       )}
 
       {stack.map((i) => (

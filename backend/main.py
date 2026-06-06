@@ -62,7 +62,7 @@ manager = ConnectionManager()
 room_manager = RoomManager()
 
 # ── Per-turn countdown ──────────────────────────────────────────────────────
-TURN_SECONDS = 10
+TURN_SECONDS = 30
 _turn_timers: Dict[str, asyncio.Task] = {}
 
 

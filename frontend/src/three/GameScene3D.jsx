@@ -12,7 +12,6 @@ import { useGameStore } from '../store/gameStore'
 import DrawPile3D from './DrawPile3D'
 import DiscardPile3D from './DiscardPile3D'
 import DirectionIndicator3D from './DirectionIndicator3D'
-import TableClock3D from './TableClock3D'
 import Opponent3D from './Opponent3D'
 import PlayerHand3D from './PlayerHand3D'
 import FlyingCard3D from './FlyingCard3D'
@@ -173,7 +172,6 @@ export default function GameScene3D() {
         underCard={underCard}
       />
       <DirectionIndicator3D direction={direction} />
-      <TableClock3D />
 
       {opponents.map((p, i) => (
         <Opponent3D

@@ -14,24 +14,22 @@ const LAMP_Y = 7.2
 export default function Room3D() {
   return (
     <group>
-      {/* ── Lighting rig (dim, moody, kept minimal for performance) ── */}
-      <ambientLight intensity={0.3} color="#cdd6ff" />
-      <hemisphereLight args={['#aeb8ff', '#140d08', 0.32]} />
+      {/* ── Lighting rig (brighter atmosphere, soft lamp) ─────────── */}
+      <ambientLight intensity={0.7} color="#d4dcff" />
+      <hemisphereLight args={['#bcc8ff', '#1c1410', 0.75]} />
 
-      {/* Warm key light from the pendant lamp (no realtime shadows) */}
-      <spotLight
+      {/* The pendant bulb as an omnidirectional light source — emits in all
+          directions with soft inverse-square falloff (no sharp cone/pool). */}
+      <pointLight
         position={[0, LAMP_Y, 0]}
-        target-position={[0, TABLE_TOP_Y, 0]}
-        angle={0.7}
-        penumbra={0.8}
-        intensity={150}
-        distance={26}
-        decay={1.5}
-        color="#ffdfae"
+        intensity={260}
+        distance={34}
+        decay={2}
+        color="#ffe9d0"
       />
 
-      {/* Subtle cool front fill so faces/cards aren't fully black */}
-      <pointLight position={[0, 5, 11]} intensity={16} distance={26} decay={1.7} color="#bcd2ff" />
+      {/* Cool front fill so faces/cards read clearly */}
+      <pointLight position={[0, 5, 11]} intensity={24} distance={28} decay={1.6} color="#bcd2ff" />
 
       {/* ── Pendant lamp ─────────────────────────────────────────── */}
       <group>
@@ -50,42 +48,31 @@ export default function Room3D() {
           <coneGeometry args={[1.75, 1.25, 44, 1, true]} />
           <meshStandardMaterial color="#9c7a3c" metalness={0.9} roughness={0.32} side={2} />
         </mesh>
-        {/* Warm inner lining (glows from inside) */}
+        {/* Soft inner lining (warm-white, very transparent) */}
         <mesh position={[0, LAMP_Y + 0.45, 0]}>
           <coneGeometry args={[1.66, 1.18, 44, 1, true]} />
-          <meshBasicMaterial color="#ffdca0" side={1} />
+          <meshBasicMaterial color="#ffeede" side={1} transparent opacity={0.35} depthWrite={false} />
         </mesh>
-        {/* Glowing mouth at the shade opening */}
+        {/* Glowing mouth at the shade opening (warm-white, transparent) */}
         <mesh position={[0, LAMP_Y - 0.16, 0]} rotation={[Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.62, 44]} />
-          <meshBasicMaterial color="#ffcf86" side={2} />
+          <meshBasicMaterial color="#fff1df" side={2} transparent opacity={0.3} depthWrite={false} />
         </mesh>
         {/* Bulb */}
         <mesh position={[0, LAMP_Y + 0.02, 0]}>
           <sphereGeometry args={[0.32, 20, 20]} />
-          <meshStandardMaterial color="#fff6e0" emissive="#ffd28a" emissiveIntensity={4.5} />
+          <meshStandardMaterial color="#fffaf0" emissive="#ffe6c2" emissiveIntensity={2.6} />
         </mesh>
-        {/* Soft glow halo around the bulb */}
-        <mesh position={[0, LAMP_Y - 0.12, 0]}>
+        {/* Soft spherical halos — the glow radiates outward in all directions */}
+        <mesh position={[0, LAMP_Y, 0]}>
           <sphereGeometry args={[0.95, 16, 16]} />
-          <meshBasicMaterial color="#ffd9a0" transparent opacity={0.14} depthWrite={false} />
+          <meshBasicMaterial color="#fff3e2" transparent opacity={0.12} depthWrite={false} />
         </mesh>
-        {/* Layered volumetric light cones down to the table */}
-        <mesh position={[0, (LAMP_Y + TABLE_TOP_Y) / 2, 0]}>
-          <coneGeometry args={[3.7, LAMP_Y - TABLE_TOP_Y, 44, 1, true]} />
-          <meshBasicMaterial color="#ffdca0" transparent opacity={0.06} depthWrite={false} side={2} />
-        </mesh>
-        <mesh position={[0, (LAMP_Y + TABLE_TOP_Y) / 2, 0]}>
-          <coneGeometry args={[2.2, LAMP_Y - TABLE_TOP_Y, 36, 1, true]} />
-          <meshBasicMaterial color="#ffe8c0" transparent opacity={0.06} depthWrite={false} side={2} />
+        <mesh position={[0, LAMP_Y, 0]}>
+          <sphereGeometry args={[1.8, 20, 20]} />
+          <meshBasicMaterial color="#ffeedd" transparent opacity={0.05} depthWrite={false} />
         </mesh>
       </group>
-
-      {/* Warm pool of light cast on the felt under the lamp */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, TABLE_TOP_Y + 0.215, 0]}>
-        <circleGeometry args={[3.4, 48]} />
-        <meshBasicMaterial color="#ffce86" transparent opacity={0.08} depthWrite={false} />
-      </mesh>
 
       {/* ── Room shell ───────────────────────────────────────────── */}
       {/* Floor */}

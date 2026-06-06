@@ -191,7 +191,67 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
-/* ── Centre-of-table turn clock ────────────────────────────────── */
+/* ── Top-of-screen turn timer (loading bar) ────────────────────── */
+.timerbar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26;
+  width: min(440px, 84vw);
+  padding: 8px 14px 10px;
+  border-radius: 14px;
+  background: rgba(12, 12, 18, 0.6);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  user-select: none;
+}
+.timerbar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-family: var(--fd, system-ui, sans-serif);
+}
+.timerbar-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.9);
+}
+.timerbar--mine .timerbar-label { color: #ffe066; }
+.timerbar-secs {
+  font-size: 14px;
+  font-weight: 900;
+  color: #fff;
+}
+.timerbar-track {
+  height: 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.timerbar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 6px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #5ce0a0, #ffd84d);
+  animation: timerdeplete 30s linear forwards;
+}
+.timerbar--danger .timerbar-fill {
+  background: linear-gradient(90deg, #ff8a4d, #ff4d4d);
+}
+.timerbar--danger .timerbar-secs { color: #ff6b6b; }
+@keyframes timerdeplete {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ── Centre-of-table turn clock (legacy, unused) ───────────────── */
 .tclock {
   display: flex;
   flex-direction: column;

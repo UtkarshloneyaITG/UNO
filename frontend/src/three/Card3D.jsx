@@ -15,7 +15,6 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Outlines } from '@react-three/drei'
 import * as THREE from 'three'
 import { CARD_T, getCardFaceTexture, getCardBackTexture } from './cardTextures'
 import { getCardGeometries } from './cardGeometry'
@@ -45,17 +44,14 @@ export default function Card3D({
 
   const { edgeMat, frontMat, backMat } = useMemo(() => {
     return {
-      // Playable cards get a glowing gold border (bloom amplifies it).
+      // Playable cards glow only on the BORDER (the rim) — the face is never
+      // tinted; the glow comes from the edge material + the Outlines below.
       edgeMat: new THREE.MeshLambertMaterial({
         color: playable ? '#fff0b0' : EDGE_COLOR,
-        emissive: playable ? '#ffcf3a' : '#000000',
-        emissiveIntensity: playable ? 0.9 : 0,
+        emissive: playable ? '#ffd24a' : '#000000',
+        emissiveIntensity: playable ? 1.1 : 0,
       }),
-      frontMat: new THREE.MeshLambertMaterial({
-        map: faceTex,
-        emissive: playable ? '#ffd84d' : '#000000',
-        emissiveIntensity: playable ? 0.12 : 0,
-      }),
+      frontMat: new THREE.MeshLambertMaterial({ map: faceTex }),
       backMat: new THREE.MeshLambertMaterial({ map: backTex }),
     }
   }, [faceTex, backTex, playable])
@@ -103,10 +99,25 @@ export default function Card3D({
             : undefined
         }
       >
-        {playable && (
-          <Outlines thickness={0.09} color={hovered ? '#ffffff' : '#ffe066'} />
-        )}
       </mesh>
+
+      {/* Glowing border frame behind playable cards (border glow, not a face
+          tint) — a bright inner frame + a softer outer halo. */}
+      {playable && (
+        <>
+          <mesh geometry={front} position={[0, 0, -FACE_OFFSET - 0.012]} scale={1.12}>
+            <meshBasicMaterial
+              color={hovered ? '#fff7c8' : '#ffd24a'}
+              transparent
+              opacity={0.95}
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh geometry={front} position={[0, 0, -FACE_OFFSET - 0.02]} scale={1.26}>
+            <meshBasicMaterial color="#ffcf3a" transparent opacity={0.4} depthWrite={false} />
+          </mesh>
+        </>
+      )}
 
       {/* Front face art */}
       <mesh geometry={front} material={frontMat} position={[0, 0, FACE_OFFSET]} renderOrder={renderOrder} />
