@@ -45,11 +45,20 @@ export default function Card3D({
 
   const { edgeMat, frontMat, backMat } = useMemo(() => {
     return {
-      edgeMat: new THREE.MeshLambertMaterial({ color: EDGE_COLOR }),
-      frontMat: new THREE.MeshLambertMaterial({ map: faceTex }),
+      // Playable cards get a glowing gold border (bloom amplifies it).
+      edgeMat: new THREE.MeshLambertMaterial({
+        color: playable ? '#fff0b0' : EDGE_COLOR,
+        emissive: playable ? '#ffcf3a' : '#000000',
+        emissiveIntensity: playable ? 0.9 : 0,
+      }),
+      frontMat: new THREE.MeshLambertMaterial({
+        map: faceTex,
+        emissive: playable ? '#ffd84d' : '#000000',
+        emissiveIntensity: playable ? 0.12 : 0,
+      }),
       backMat: new THREE.MeshLambertMaterial({ map: backTex }),
     }
-  }, [faceTex, backTex])
+  }, [faceTex, backTex, playable])
 
   const baseY = groupProps.position ? groupProps.position[1] : 0
 
@@ -95,7 +104,7 @@ export default function Card3D({
         }
       >
         {playable && (
-          <Outlines thickness={0.05} color={hovered ? '#fff6b0' : '#ffd84d'} />
+          <Outlines thickness={0.09} color={hovered ? '#ffffff' : '#ffe066'} />
         )}
       </mesh>
 

@@ -25,6 +25,18 @@ const DISCARD_ROT = [-Math.PI / 2 + 0.62, 0, 0]
 const DRAW_POS = [-2.4, TABLE_TOP_Y + 0.5, 0]
 const DRAW_ROT = [Math.PI / 2, 0, 0] // face-down (back up)
 
+// Whether a card is legally playable right now (mirrors the backend rule).
+function canPlay(c, gs) {
+  const top = gs.discard_top
+  if (!top || gs.draw_stack > 0) return false
+  if (c.card_type === 'wild' || c.card_type === 'wild_draw_four') return true
+  if (c.color === gs.current_color) return true
+  if (c.card_type === top.card_type) {
+    return c.card_type === 'number' ? c.number === top.number : true
+  }
+  return false
+}
+
 // Where a played card flies *from*, given who played it.
 function fromTransform(pid, players, myId) {
   if (!pid || pid === myId) {
@@ -132,6 +144,12 @@ export default function GameScene3D() {
   const opponents = orderedOpponents(players, playerId)
   const seats = opponentSeats(opponents.length)
 
+  // Highlight the deck when it's your turn and you should/must draw.
+  const myHand = gameState.my_hand || []
+  const hasPlayable = myHand.some((c) => canPlay(c, gameState))
+  const mustDraw =
+    isMyTurn && !gameState.drawn_card_id && (draw_stack > 0 || !hasPlayable)
+
   const handleDone = (key) => {
     setFlying((f) => f.filter((x) => x.key !== key))
     if (key === suppressId) {
@@ -142,7 +160,12 @@ export default function GameScene3D() {
 
   return (
     <group>
-      <DrawPile3D count={draw_pile_count} isMyTurn={isMyTurn} drawStack={draw_stack} />
+      <DrawPile3D
+        count={draw_pile_count}
+        isMyTurn={isMyTurn}
+        drawStack={draw_stack}
+        mustDraw={mustDraw}
+      />
       <DiscardPile3D
         topCard={discard_top}
         currentColor={current_color}

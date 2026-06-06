@@ -65,17 +65,18 @@ export default function PlayerHand3D() {
         const x = Math.sin(rad) * FAN_R
         const dy = (1 - Math.cos(rad)) * FAN_R // outer cards dip along the arc
         const isPlayable = playable.has(card.id)
-        const lift = isPlayable ? 0.18 : 0
-        // Monotonic depth stagger so neighbours never share a plane.
-        const z = HAND_Z + i * DEPTH_STEP
+        const highlight = isMyTurn && isPlayable
+        // Playable cards rise up and nudge toward the viewer so they pop.
+        const lift = highlight ? 0.4 : 0
+        const z = HAND_Z + i * DEPTH_STEP + (highlight ? 0.3 : 0)
 
         return (
           <Card3D
             key={card.id}
             card={card}
-            playable={isMyTurn && isPlayable}
+            playable={highlight}
             dimmed={isMyTurn && !isPlayable}
-            onClick={isMyTurn && isPlayable ? () => selectCard(card) : undefined}
+            onClick={highlight ? () => selectCard(card) : undefined}
             position={[x, HAND_Y - dy + lift, z]}
             rotation={[TILT, 0, -rad]}
             scale={1.0}
