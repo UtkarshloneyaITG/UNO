@@ -20,12 +20,16 @@ export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDra
   const coneRef = useRef()
 
   const stack = useMemo(() => {
-    const n = count > 0 ? 3 : 0
+    // Always keep at least one clickable face-down card on your turn, even
+    // when the deck reads empty — drawing triggers a server-side reshuffle
+    // from the discard pile. Without this the player has nothing to click
+    // and is stuck until the turn timer forces a penalty.
+    const n = count > 0 ? 3 : isMyTurn ? 1 : 0
     return Array.from({ length: n }, (_, i) => i)
-  }, [count])
+  }, [count, isMyTurn])
 
   const baseY = TOP_Y + 0.22
-  const label = drawStack > 0 ? `Draw ${drawStack}!` : `${count} left`
+  const label = drawStack > 0 ? `Draw ${drawStack}!` : count > 0 ? `${count} left` : 'Reshuffle'
   const urgent = mustDraw || drawStack > 0
   const ringColor = urgent ? '#ff6060' : '#ffd84d'
 

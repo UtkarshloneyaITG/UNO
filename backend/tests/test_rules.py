@@ -703,6 +703,42 @@ class TestDrawCard:
         # (2 cards were recycled, 1 drawn → 1 remains or 0)
         assert len(g.discard_pile) == 1   # only the original top remains
 
+    def test_deck_replenished_when_last_card_drawn(self):
+        """Drawing the final card must top the pile back up immediately, so
+        the reported count never reads 0 while the discard can still recycle —
+        otherwise the client has no clickable deck and stalls until timeout."""
+        g = make_game("A", "B")
+        force_start(g)
+        g.deck = [c("red", "number", 1)]   # one card left
+        g.discard_pile = [
+            c("red", "number", 5),
+            c("blue", "number", 7),
+            c("green", "number", 2),
+        ]
+        g.draw_card(p0(g).id)              # draws the last deck card
+        assert g.get_state_for_player(p0(g).id)["draw_pile_count"] > 0
+
+    def test_stack_penalty_reshuffles_for_full_amount(self):
+        """A +4 penalty must be fully drawn even when the deck is short, by
+        recycling the discard pile mid-draw."""
+        g = make_game("A", "B")
+        force_start(g)
+        g.draw_stack = 4
+        g.current_player_index = 1
+        g.deck = [c("red", "number", 1)]   # only 1 card in the deck
+        g.discard_pile = [
+            c("red", "number", 5),
+            c("blue", "number", 7),
+            c("green", "number", 2),
+            c("yellow", "number", 3),
+            c("red", "number", 8),
+            c("blue", "number", 9),
+        ]
+        before = len(p1(g).hand)
+        g.draw_card(p1(g).id)
+        assert len(p1(g).hand) == before + 4   # full stack drawn
+        assert g.draw_stack == 0
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 13. UNO call and catch

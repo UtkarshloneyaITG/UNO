@@ -447,6 +447,10 @@ class GameState:
 
         card = self.deck.pop()
         current.hand.append(card)
+        # Top the pile back up immediately if that was the last card, so the
+        # reported draw_pile_count never reads 0 while cards remain to recycle.
+        if not self.deck:
+            self._reshuffle()
 
         can_play = card.can_play_on(self.discard_pile[-1], self.current_color)
 
@@ -778,7 +782,12 @@ class GameState:
         self.current_player_index = self._next_index()
 
     def _draw_for_player(self, player: Player, count: int) -> List[Card]:
-        """Draw `count` cards for `player`, reshuffling discard if needed."""
+        """Draw `count` cards for `player`, reshuffling discard if needed.
+
+        Cards are recycled from the discard pile on the fly, so a short deck
+        can always satisfy a +2/+4 penalty as long as enough cards exist in
+        play. The pile is then topped back up so its count stays accurate.
+        """
         drawn: List[Card] = []
         for _ in range(count):
             if not self.deck:
@@ -787,6 +796,8 @@ class GameState:
                 card = self.deck.pop()
                 player.hand.append(card)
                 drawn.append(card)
+        if not self.deck:
+            self._reshuffle()
         return drawn
 
     def _reshuffle(self) -> None:
