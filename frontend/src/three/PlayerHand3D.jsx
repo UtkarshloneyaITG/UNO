@@ -7,15 +7,24 @@
  */
 import { useMemo } from 'react'
 import { Html } from '@react-three/drei'
+import { useThree } from '@react-three/fiber'
 import { useGameStore } from '../store/gameStore'
 import Card3D from './Card3D'
 import { TABLE_TOP_Y } from './layout'
+
+const NARROW_PX = 640 // below this, grow cards so touch targets stay tappable
 
 function isCardPlayable(card, gameState) {
   if (!gameState || gameState.status !== 'playing') return false
   const top = gameState.discard_top
   if (!top) return false
-  if (gameState.draw_stack > 0) return false
+  if (gameState.draw_stack > 0) {
+    // House rule: pass the penalty on with +2 on +2, or +4 on anything —
+    // but a +2 can never answer a +4.
+    if (!gameState.settings?.stack_draw_cards) return false
+    if (card.card_type === 'wild_draw_four') return true
+    return card.card_type === 'draw_two' && top.card_type !== 'wild_draw_four'
+  }
   if (gameState.drawn_card_id) return card.id === gameState.drawn_card_id
   if (card.card_type === 'wild' || card.card_type === 'wild_draw_four') return true
   if (card.color === gameState.current_color) return true
@@ -34,11 +43,23 @@ const HAND_Z = 6.1
 const HAND_Y = TABLE_TOP_Y + 1.0
 const TILT = -0.46 // lean cards back toward the camera
 
-export default function PlayerHand3D() {
-  const { gameState, playerId, selectCard, passTurn, callUno, challengeWildFour } =
-    useGameStore()
+export default function PlayerHand3D({ hidden = false }) {
+  const {
+    gameState,
+    playerId,
+    selectCard,
+    passTurn,
+    callUno,
+    challengeWildFour,
+    actionPending,
+    connectionPhase,
+  } = useGameStore()
+
+  const canvasWidth = useThree((s) => s.size.width)
+  const narrow = canvasWidth < NARROW_PX
 
   const hand = gameState?.my_hand || []
+  const locked = actionPending || connectionPhase !== 'online'
   const isMyTurn = gameState?.current_player_id === playerId
   const drawnCardId = gameState?.drawn_card_id
   const myData = gameState?.players?.find((p) => p.id === playerId)
@@ -49,11 +70,18 @@ export default function PlayerHand3D() {
     return new Set(hand.filter((c) => isCardPlayable(c, gameState)).map((c) => c.id))
   }, [hand, gameState, isMyTurn])
 
+  // Hidden during the opening deal animation — the fan appears as the last
+  // dealt cards land.
+  if (hidden) return null
   if (!gameState || gameState.status !== 'playing') return null
 
   const count = hand.length
   // Even angular spacing, capped so big hands don't wrap off-screen.
-  const spreadDeg = count <= 1 ? 0 : Math.min(MAX_SPREAD, DEG_PER_CARD * (count - 1))
+  // On narrow (touch) screens, space the fan out and grow the cards so
+  // each one stays a comfortable tap target.
+  const degPerCard = narrow ? 8 : DEG_PER_CARD
+  const cardScale = narrow ? 1.15 : 1.0
+  const spreadDeg = count <= 1 ? 0 : Math.min(MAX_SPREAD, degPerCard * (count - 1))
   const step = count > 1 ? spreadDeg / (count - 1) : 0
   const mid = (count - 1) / 2
 
@@ -65,7 +93,7 @@ export default function PlayerHand3D() {
         const x = Math.sin(rad) * FAN_R
         const dy = (1 - Math.cos(rad)) * FAN_R // outer cards dip along the arc
         const isPlayable = playable.has(card.id)
-        const highlight = isMyTurn && isPlayable
+        const highlight = isMyTurn && isPlayable && !locked
         // Playable cards rise up and nudge toward the viewer so they pop.
         const lift = highlight ? 0.4 : 0
         const z = HAND_Z + i * DEPTH_STEP + (highlight ? 0.3 : 0)
@@ -79,7 +107,7 @@ export default function PlayerHand3D() {
             onClick={highlight ? () => selectCard(card) : undefined}
             position={[x, HAND_Y - dy + lift, z]}
             rotation={[TILT, 0, -rad]}
-            scale={1.0}
+            scale={cardScale}
             renderOrder={i}
           />
         )
@@ -93,12 +121,12 @@ export default function PlayerHand3D() {
           </span>
           <div className="hand3d-buttons">
             {isMyTurn && drawnCardId && (
-              <button className="btn btn--pass" onClick={passTurn}>
+              <button className="btn btn--pass" disabled={locked} onClick={passTurn}>
                 Pass Turn
               </button>
             )}
             {isMyTurn && gameState.challenge_available && (
-              <button className="btn btn--challenge" onClick={() => challengeWildFour()}>
+              <button className="btn btn--challenge" disabled={locked} onClick={() => challengeWildFour()}>
                 ⚡ Challenge!
               </button>
             )}

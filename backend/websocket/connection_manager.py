@@ -32,6 +32,10 @@ class ConnectionManager:
         """
         Clean up after a WebSocket disconnects.
         Returns the player_id that was associated with this connection (or None).
+
+        If the player already reconnected on a NEWER socket, this stale
+        close must not destroy the fresh binding — return None so the
+        caller treats it as a no-op instead of removing a live player.
         """
         try:
             self._connections.remove(ws)
@@ -42,8 +46,19 @@ class ConnectionManager:
         player_id = self._ws_to_player.pop(wid, None)
         self._ws_to_room.pop(wid, None)
         if player_id:
-            self._player_to_ws.pop(player_id, None)
+            if self._player_to_ws.get(player_id) is ws:
+                self._player_to_ws.pop(player_id, None)
+            else:
+                return None
         return player_id
+
+    def unbind_player(self, player_id: str) -> None:
+        """Drop every mapping for a player (leave/kick) without closing the ws."""
+        ws = self._player_to_ws.pop(player_id, None)
+        if ws is not None:
+            wid = id(ws)
+            self._ws_to_player.pop(wid, None)
+            self._ws_to_room.pop(wid, None)
 
     # ------------------------------------------------------------------
     # Registration

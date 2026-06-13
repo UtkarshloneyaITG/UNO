@@ -20,13 +20,18 @@ export default function HintBar() {
   if (isMyTurn) {
     if (gameState.draw_stack > 0) {
       const n = gameState.draw_stack
+      const stacking = gameState.settings?.stack_draw_cards
       if (gameState.challenge_available) {
         icon = '⚡'
-        text = `Wild Draw 4! Draw ${n} cards from the deck — or Challenge if you suspect a bluff.`
+        text = stacking
+          ? `Wild Draw 4! Draw ${n}, stack your own +4 on top, or Challenge a bluff.`
+          : `Wild Draw 4! Draw ${n} cards from the deck — or Challenge if you suspect a bluff.`
         type = 'challenge'
       } else {
         icon = '⚠'
-        text = `Penalty! You must draw ${n} card${n > 1 ? 's' : ''} from the deck (no stacking).`
+        text = stacking
+          ? `Penalty! Stack another +2/+4 to pass it on, or draw ${n} card${n > 1 ? 's' : ''}.`
+          : `Penalty! You must draw ${n} card${n > 1 ? 's' : ''} from the deck (no stacking).`
         type = 'warning'
       }
     } else if (gameState.drawn_card_id) {

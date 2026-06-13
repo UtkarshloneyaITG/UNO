@@ -56,18 +56,27 @@ export default function Card3D({
     }
   }, [faceTex, backTex, playable])
 
-  const baseY = groupProps.position ? groupProps.position[1] : 0
+  const innerRef = useRef()
 
+  // Hover lift + tilt happen on an INNER group so the parent-controlled
+  // transform (fan position/rotation) is never fought over.
   useFrame(() => {
-    if (!groupRef.current || !liftOnHover) return
-    const target = hovered && (playable || onClick) ? baseY + 0.22 : baseY
-    groupRef.current.position.y += (target - groupRef.current.position.y) * 0.25
+    if (!innerRef.current || !liftOnHover) return
+    const lifted = hovered && (playable || onClick)
+    const g = innerRef.current
+    g.position.y += ((lifted ? 0.22 : 0) - g.position.y) * 0.25
+    g.rotation.x += ((lifted ? -0.12 : 0) - g.rotation.x) * 0.2
+    const s = lifted ? 1.04 : 1
+    g.scale.x += (s - g.scale.x) * 0.2
+    g.scale.y += (s - g.scale.y) * 0.2
+    g.scale.z += (s - g.scale.z) * 0.2
   })
 
   const interactive = !!onClick
 
   return (
     <group ref={groupRef} {...groupProps}>
+      <group ref={innerRef}>
       {/* Rounded white body / edge — also the raycast target */}
       <mesh
         geometry={body}
@@ -137,6 +146,7 @@ export default function Card3D({
           <meshBasicMaterial color="#000000" transparent opacity={0.32} depthWrite={false} />
         </mesh>
       )}
+      </group>
     </group>
   )
 }

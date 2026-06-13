@@ -13,6 +13,9 @@ import { TABLE_TOP_Y as TOP_Y } from './layout'
 
 export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDraw = false }) {
   const drawCard = useGameStore((s) => s.drawCard)
+  const actionPending = useGameStore((s) => s.actionPending)
+  const connectionPhase = useGameStore((s) => s.connectionPhase)
+  const canDraw = isMyTurn && !actionPending && connectionPhase === 'online'
   const ringRef = useRef()
   const coneRef = useRef()
 
@@ -64,8 +67,8 @@ export default function DrawPile3D({ count = 0, isMyTurn, drawStack = 0, mustDra
           key={i}
           faceDown
           liftOnHover={false}
-          playable={isMyTurn && i === stack.length - 1}
-          onClick={isMyTurn ? () => drawCard() : undefined}
+          playable={canDraw && i === stack.length - 1}
+          onClick={canDraw ? () => drawCard() : undefined}
           position={[0, baseY + i * (CARD_T + 0.004), 0]}
           rotation={[Math.PI / 2, 0, (i % 2) * 0.04]}
         />

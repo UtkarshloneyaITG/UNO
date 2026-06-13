@@ -67,7 +67,7 @@ _turn_timers: Dict[str, asyncio.Task] = {}
 
 
 def _schedule_turn_timer(room_id: str) -> None:
-    """(Re)start the 10s turn clock for a room. Called after every broadcast."""
+    """(Re)start the per-room turn clock. Called after every broadcast."""
     old = _turn_timers.pop(room_id, None)
     if old:
         old.cancel()
@@ -76,15 +76,16 @@ def _schedule_turn_timer(room_id: str) -> None:
     if not game or game.status.value != "playing":
         return
 
-    game.turn_deadline_ms = int((time.time() + TURN_SECONDS) * 1000)
+    secs = game.settings.get("turn_seconds", TURN_SECONDS)
+    game.turn_deadline_ms = int((time.time() + secs) * 1000)
     seq = len(game.action_log)
     idx = game.current_player_index
-    _turn_timers[room_id] = asyncio.create_task(_turn_timeout(room_id, seq, idx))
+    _turn_timers[room_id] = asyncio.create_task(_turn_timeout(room_id, seq, idx, secs))
 
 
-async def _turn_timeout(room_id: str, seq: int, idx: int) -> None:
+async def _turn_timeout(room_id: str, seq: int, idx: int, secs: int) -> None:
     try:
-        await asyncio.sleep(TURN_SECONDS)
+        await asyncio.sleep(secs)
     except asyncio.CancelledError:
         return
 
@@ -159,6 +160,9 @@ async def _dispatch(ws: WebSocket, msg: dict) -> None:
         "challenge_wild4":  _challenge_wild4,
         "leave_room":       _leave_room,
         "chat":             _chat,
+        "rematch":          _rematch,
+        "update_settings":  _update_settings,
+        "kick_player":      _kick_player,
     }
     handler = handlers.get(t)
     if handler:
@@ -255,11 +259,11 @@ async def _join_room(ws: WebSocket, msg: dict) -> None:
         return await manager.send({"type": "error", "message": f"Room '{room_id}' not found."}, ws)
 
     # --- Reconnection: player sends their saved player_id ---
+    # reconnect_player returns False for kicked ids — those fall through to
+    # the fresh-join path below (rejected mid-game by add_player_to_room).
     if existing_player_id:
         existing = game._find_player(existing_player_id)
-        if existing:
-            # Re-register the WebSocket for this player
-            game.reconnect_player(existing_player_id)
+        if existing and game.reconnect_player(existing_player_id):
             room_manager.register_player_in_room(existing_player_id, room_id)
             manager.register(ws, existing_player_id, room_id)
             log.info("Player '%s' reconnected to room %s", existing.name, room_id)
@@ -438,13 +442,91 @@ async def _leave_room(ws: WebSocket, _msg: dict) -> None:
     name = player.name if player else "A player"
 
     room_id = room_manager.remove_player(player_id)
-    manager._ws_to_player.pop(id(ws), None)
-    manager._ws_to_room.pop(id(ws), None)
-    manager._player_to_ws.pop(player_id, None)
+    manager.unbind_player(player_id)
 
     if room_id:
         await _broadcast_to_room(room_id, {"type": "player_left", "player_name": name})
         await _broadcast_room_state(room_id)
+
+
+async def _rematch(ws: WebSocket, _msg: dict) -> None:
+    """Host returns a finished game to the lobby for another round."""
+    player_id = manager.get_player_id(ws)
+    game = room_manager.get_room_for_player(player_id) if player_id else None
+    if not game or not player_id:
+        return await manager.send({"type": "error", "message": "Not in a game."}, ws)
+
+    if game.status.value != "finished":
+        return await manager.send({"type": "error", "message": "Game is not finished."}, ws)
+
+    if game.host_player_id != player_id:
+        host = game._find_player(game.host_player_id)
+        if host and host.is_connected:
+            return await manager.send(
+                {"type": "error", "message": "Only the host can start a rematch."}, ws
+            )
+        # Host left/closed the tab — hand the room to the requester so it
+        # doesn't dead-end on the game-over screen.
+        game.host_player_id = player_id
+
+    old = _turn_timers.pop(game.room_id, None)
+    if old:
+        old.cancel()
+
+    result = game.reset_for_rematch()
+    if not result["success"]:
+        return await manager.send({"type": "error", "message": result["error"]}, ws)
+
+    for pid in result.get("removed_player_ids", []):
+        room_manager.unregister_player(pid)
+
+    log.info("Rematch started in room %s", game.room_id)
+    await _broadcast_to_room(
+        game.room_id,
+        {"type": "rematch_started", "room_state": game.get_room_state()},
+    )
+
+
+async def _update_settings(ws: WebSocket, msg: dict) -> None:
+    """Host updates room settings while in the lobby."""
+    player_id = manager.get_player_id(ws)
+    game = room_manager.get_room_for_player(player_id) if player_id else None
+    if not game or not player_id:
+        return await manager.send({"type": "error", "message": "Not in a room."}, ws)
+
+    result = game.update_settings(player_id, msg.get("settings") or {})
+    if not result["success"]:
+        return await manager.send({"type": "error", "message": result["error"]}, ws)
+
+    await _broadcast_room_state(game.room_id)
+
+
+async def _kick_player(ws: WebSocket, msg: dict) -> None:
+    """Host removes a player from the room."""
+    player_id = manager.get_player_id(ws)
+    game = room_manager.get_room_for_player(player_id) if player_id else None
+    if not game or not player_id:
+        return await manager.send({"type": "error", "message": "Not in a room."}, ws)
+
+    target_id: str = msg.get("target_id", "")
+    result = game.kick_player(player_id, target_id)
+    if not result["success"]:
+        return await manager.send({"type": "error", "message": result["error"]}, ws)
+
+    await manager.send_to_player(
+        {"type": "kicked", "message": "You were removed from the room by the host."},
+        target_id,
+    )
+    manager.unbind_player(target_id)
+    room_manager.unregister_player(target_id)
+
+    await _broadcast_to_room(
+        game.room_id,
+        {"type": "player_left", "player_name": result.get("player_name", "A player")},
+    )
+    await _broadcast_room_state(game.room_id)
+    if game.status.value in ("playing", "finished"):
+        await _broadcast_game_state(game.room_id)
 
 
 # ---------------------------------------------------------------------------
@@ -456,13 +538,13 @@ async def _broadcast_game_state(room_id: str) -> None:
     game = room_manager.get_room(room_id)
     if not game:
         return
+    # Reset the turn clock first so the broadcast carries the fresh deadline.
+    _schedule_turn_timer(room_id)
     messages = {
         p.id: {"type": "game_state", "state": game.get_state_for_player(p.id)}
         for p in game.players
     }
     await manager.broadcast_room(messages)
-    # Reset the turn clock on every state change (= every action).
-    _schedule_turn_timer(room_id)
 
 
 async def _broadcast_room_state(room_id: str) -> None:

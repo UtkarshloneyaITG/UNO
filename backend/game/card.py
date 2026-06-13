@@ -48,6 +48,14 @@ class Card:
     def is_wild(self) -> bool:
         return self.card_type in (CardType.WILD, CardType.WILD_DRAW_FOUR)
 
+    def points(self) -> int:
+        """Classic UNO scoring value of this card."""
+        if self.card_type == CardType.NUMBER:
+            return self.number or 0
+        if self.card_type in (CardType.SKIP, CardType.REVERSE, CardType.DRAW_TWO):
+            return 20
+        return 50  # Wild / Wild Draw Four
+
     def can_play_on(self, top_card: "Card", current_color: Color) -> bool:
         """Return True when this card is legally playable on the current discard pile."""
         # Wild cards are always playable

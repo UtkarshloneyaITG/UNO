@@ -49,6 +49,33 @@ export function opponentSeats(count) {
 }
 
 /**
+ * World anchor for a player's seat — where cards fly to/from and where
+ * seat-targeted effects (skip stamp, UNO shout, penalty label) appear.
+ * The local player sits at the front (+Z); opponents around the rim.
+ */
+export function seatAnchor(pid, players, myId) {
+  if (!pid || pid === myId) {
+    return {
+      pos: [0, TABLE_TOP_Y + 1.0, 6.0],
+      rot: [-0.46, 0, 0],
+      isMe: true,
+    }
+  }
+  const opps = orderedOpponents(players, myId)
+  const seats = opponentSeats(opps.length)
+  const idx = opps.findIndex((p) => p.id === pid)
+  const seat = idx >= 0 ? seats[idx] : null
+  if (seat) {
+    return {
+      pos: [seat.x * 0.66, TABLE_TOP_Y + 1.1, seat.z * 0.66],
+      rot: [-0.3, Math.atan2(-seat.x, -seat.z), 0],
+      isMe: false,
+    }
+  }
+  return { pos: [0, TABLE_TOP_Y + 1.0, 0], rot: [-Math.PI / 2 + 0.62, 0, 0], isMe: false }
+}
+
+/**
  * Order opponents clockwise starting from the player's left neighbour,
  * identical to the original 2D board's `orderedOpponents` walk.
  */

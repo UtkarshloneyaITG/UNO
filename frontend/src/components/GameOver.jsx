@@ -1,6 +1,7 @@
 /**
  * GameOver — overlay shown when the game finishes.
- * Announces the winner and provides a "Back to Lobby" button.
+ * Announces the winner, shows rankings with cumulative scores, and lets
+ * the host start a rematch (everyone else waits or leaves).
  */
 
 import React, { useMemo } from 'react'
@@ -16,9 +17,17 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉', '🏅', '🏅', '🏅']
 const RANK_LABELS = ['1st', '2nd', '3rd', '4th', '5th', '6th']
 
 export default function GameOver({ winner, winnerId, myId }) {
-  const { leaveRoom, gameState } = useGameStore()
+  const { leaveRoom, rematch, gameState } = useGameStore()
   const isWinner = winnerId === myId
   const placements = gameState?.placements || []
+  const isHost = gameState?.host_player_id === myId
+  const roundPoints = gameState?.last_round_points ?? 0
+  const scoreById = useMemo(() => {
+    const map = {}
+    for (const p of gameState?.players || []) map[p.id] = p.score ?? 0
+    return map
+  }, [gameState?.players])
+  const hasScores = Object.values(scoreById).some((s) => s > 0)
 
   // Fallback: if no placements data, build a minimal one from winner
   const rankings = placements.length > 0
@@ -74,6 +83,9 @@ export default function GameOver({ winner, winnerId, myId }) {
       <div className="game-over-card">
         <div className="game-over-emoji">{heroEmoji}</div>
         <h2 className="game-over-title">{heroTitle}</h2>
+        {gameState?.rounds_played > 1 && (
+          <div className="game-over-round">Round {gameState.rounds_played}</div>
+        )}
         <div className="game-over-divider" />
 
         {/* Rankings table */}
@@ -87,6 +99,14 @@ export default function GameOver({ winner, winnerId, myId }) {
                 <span className="ranking-medal">{RANK_MEDALS[p.rank - 1]}</span>
                 <span className="ranking-place">{RANK_LABELS[p.rank - 1]}</span>
                 <span className="ranking-name">{p.name}{p.id === myId ? ' (you)' : ''}</span>
+                {hasScores && (
+                  <span className="ranking-points">
+                    {p.rank === 1 && roundPoints > 0 && (
+                      <span className="ranking-points-gain">+{roundPoints}</span>
+                    )}
+                    {scoreById[p.id] ?? 0} pts
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -100,11 +120,17 @@ export default function GameOver({ winner, winnerId, myId }) {
             : 'Fortune may favour you next round.'}
         </p>
 
-        <button className="btn btn--primary btn--large" onClick={leaveRoom}>
+        {isHost ? (
+          <button className="btn btn--primary btn--large" onClick={rematch}>
+            🔄 Play Again
+          </button>
+        ) : (
+          <p className="game-over-wait">Waiting for the host to start a rematch…</p>
+        )}
+        <button className="btn btn--ghost" onClick={leaveRoom}>
           Back to Lobby
         </button>
       </div>
     </div>
   )
 }
-

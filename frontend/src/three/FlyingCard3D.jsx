@@ -31,6 +31,7 @@ export default function FlyingCard3D({
   via = null,
   viaRot = [-0.22, 0, 0],
   delay = 0,
+  arc = ARC_HEIGHT,
   onDone,
 }) {
   const ref = useRef()
@@ -69,7 +70,7 @@ export default function FlyingCard3D({
     } else {
       const e = ease(tt)
       pos = lerp3(from, to, e)
-      pos[1] += Math.sin(Math.PI * tt) * ARC_HEIGHT
+      pos[1] += Math.sin(Math.PI * tt) * arc
       rot = lerp3(fromRot, toRot, e)
       scale = BASE_SCALE
     }

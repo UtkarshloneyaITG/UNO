@@ -94,6 +94,10 @@ class RoomManager:
         """Register the player->room mapping (after reconnect)."""
         self._player_room[player_id] = room_id
 
+    def unregister_player(self, player_id: str) -> None:
+        """Drop only the player->room reverse mapping (rematch prune / kick)."""
+        self._player_room.pop(player_id, None)
+
     # ------------------------------------------------------------------
     # Utility
     # ------------------------------------------------------------------

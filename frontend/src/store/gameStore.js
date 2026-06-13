@@ -1,17 +1,56 @@
 /**
  * Zustand store — single source of truth for the UNO client.
  *
- * All session state lives on the server (in-memory). Nothing is
- * persisted to localStorage or any database — refreshing the page
- * returns the player to the lobby.
+ * Game state lives on the server (in-memory). The only thing persisted
+ * client-side is the session identity {playerId, roomId, playerName} in
+ * sessionStorage (per-tab), so a page refresh rejoins the same game
+ * instead of dropping the player back to the lobby.
  */
 
 import { create } from 'zustand'
+
+// ── Session persistence (sessionStorage: per-tab, so two tabs never fight
+//    over the same player_id's socket binding on the server) ───────────────
+const SESSION_KEY = 'uno_session'
+
+export function loadSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveSession(session) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, savedAt: Date.now() }))
+  } catch {
+    // storage unavailable — resume simply won't survive a refresh
+  }
+}
+
+function clearSession() {
+  try {
+    sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+const RESUME_TIMEOUT_MS = 6000
+let resumeTimer = null
+let actionPendingTimer = null
 
 export const useGameStore = create((set, get) => ({
   // ── Connection ────────────────────────────────────────────────────────────
   isConnected: false,
   sendMessage: null,          // injected by the useWebSocket hook
+  // 'connecting' | 'online' | 'reconnecting' | 'resuming'
+  connectionPhase: 'connecting',
+  resumePending: false,       // true while a session-resume join is in flight
+  actionPending: false,       // true while a gameplay action awaits the server
+  joinPending: false,         // true while create/join room awaits the server
 
   // ── Identity ─────────────────────────────────────────────────────────────
   playerId: null,
@@ -36,9 +75,59 @@ export const useGameStore = create((set, get) => ({
   // Setters injected / called by the WS hook
   // =========================================================================
 
-  setConnected: (v) => set({ isConnected: v }),
+  setConnected: (v) =>
+    set((s) => ({
+      isConnected: v,
+      connectionPhase: v
+        ? s.resumePending
+          ? 'resuming'
+          : 'online'
+        : s.playerId || loadSession()
+          ? 'reconnecting'
+          : 'connecting',
+    })),
 
   setSendMessage: (fn) => set({ sendMessage: fn }),
+
+  // Called by useWebSocket right before it sends the resume join_room.
+  beginResume: (session) => {
+    clearTimeout(resumeTimer)
+    set((s) => ({
+      resumePending: true,
+      connectionPhase: 'resuming',
+      playerName: s.playerName || session.playerName || null,
+    }))
+    resumeTimer = setTimeout(() => {
+      if (get().resumePending) get()._failResume()
+    }, RESUME_TIMEOUT_MS)
+  },
+
+  _failResume: () => {
+    clearTimeout(resumeTimer)
+    clearSession()
+    set({
+      resumePending: false,
+      connectionPhase: 'online',
+      roomId: null,
+      roomState: null,
+      gameState: null,
+      playerId: null,
+      bubbles: {},
+    })
+    get().setError('Your previous game is no longer available.')
+  },
+
+  _clearActionPending: () => {
+    clearTimeout(actionPendingTimer)
+    set({ actionPending: false })
+  },
+
+  _setActionPending: () => {
+    set({ actionPending: true })
+    clearTimeout(actionPendingTimer)
+    // Safety valve: never wedge the UI if the server response goes missing.
+    actionPendingTimer = setTimeout(() => set({ actionPending: false }), 3000)
+  },
 
   setError: (msg) => {
     set({ error: msg })
@@ -58,15 +147,24 @@ export const useGameStore = create((set, get) => ({
     const { type } = message
 
     switch (type) {
-      // ── Joined room (create or join) ─────────────────────────────────────
+      // ── Joined room (create, join, or session resume) ────────────────────
       case 'joined': {
         const { player_id, room_id, room_state } = message
+        clearTimeout(resumeTimer)
         set({
           playerId: player_id,
           roomId: room_id,
           roomState: room_state,
           gameState: null,
           error: null,
+          resumePending: false,
+          joinPending: false,
+          connectionPhase: 'online',
+        })
+        saveSession({
+          playerId: player_id,
+          roomId: room_id,
+          playerName: get().playerName,
         })
         break
       }
@@ -74,6 +172,27 @@ export const useGameStore = create((set, get) => ({
       // ── Lobby update ─────────────────────────────────────────────────────
       case 'room_update': {
         set({ roomState: message.room_state })
+        break
+      }
+
+      // ── Rematch — everyone returns to the waiting room ───────────────────
+      case 'rematch_started': {
+        set({ gameState: null, roomState: message.room_state })
+        get().setNotification('🔄 Rematch! Back to the waiting room.')
+        break
+      }
+
+      // ── This client was kicked by the host ───────────────────────────────
+      case 'kicked': {
+        clearSession()
+        set({
+          roomId: null,
+          roomState: null,
+          gameState: null,
+          playerId: null,
+          bubbles: {},
+        })
+        get().setError(message.message || 'You were removed from the room.')
         break
       }
 
@@ -109,6 +228,7 @@ export const useGameStore = create((set, get) => ({
           get().setNotification('⊘ Your turn was skipped!')
         }
 
+        get()._clearActionPending()
         set({ gameState: newState })
         break
       }
@@ -136,6 +256,14 @@ export const useGameStore = create((set, get) => ({
 
       // ── Error from server ────────────────────────────────────────────────
       case 'error': {
+        // While a resume join is in flight, the server answers this socket
+        // sequentially — any error necessarily answers our join_room.
+        if (get().resumePending) {
+          get()._failResume()
+          break
+        }
+        get()._clearActionPending()
+        set({ joinPending: false })
         get().setError(message.message)
         break
       }
@@ -151,16 +279,16 @@ export const useGameStore = create((set, get) => ({
 
   createRoom: (playerName) => {
     const name = playerName.trim()
-    if (!name) return
-    set({ playerName: name })
+    if (!name || get().joinPending) return
+    set({ playerName: name, joinPending: true })
     get().sendMessage?.({ type: 'create_room', player_name: name })
   },
 
   joinRoom: (roomId, playerName) => {
     const name = playerName.trim()
     const rid = roomId.trim().toUpperCase()
-    if (!name || !rid) return
-    set({ playerName: name })
+    if (!name || !rid || get().joinPending) return
+    set({ playerName: name, joinPending: true })
     get().sendMessage?.({
       type: 'join_room',
       room_id: rid,
@@ -171,6 +299,18 @@ export const useGameStore = create((set, get) => ({
 
   startGame: () => {
     get().sendMessage?.({ type: 'start_game' })
+  },
+
+  rematch: () => {
+    get().sendMessage?.({ type: 'rematch' })
+  },
+
+  updateSettings: (partial) => {
+    get().sendMessage?.({ type: 'update_settings', settings: partial })
+  },
+
+  kickPlayer: (targetId) => {
+    get().sendMessage?.({ type: 'kick_player', target_id: targetId })
   },
 
   // `card` is the full card object from gameState.my_hand
@@ -184,6 +324,7 @@ export const useGameStore = create((set, get) => ({
     if (card.card_type === 'wild' || card.card_type === 'wild_draw_four') {
       set({ showColorPicker: true, pendingWildCardId: card.id })
     } else {
+      get()._setActionPending()
       get().sendMessage?.({ type: 'play_card', card_id: card.id })
     }
   },
@@ -191,6 +332,7 @@ export const useGameStore = create((set, get) => ({
   chooseColor: (color) => {
     const { pendingWildCardId } = get()
     if (pendingWildCardId) {
+      get()._setActionPending()
       get().sendMessage?.({
         type: 'play_card',
         card_id: pendingWildCardId,
@@ -205,10 +347,12 @@ export const useGameStore = create((set, get) => ({
   },
 
   drawCard: () => {
+    get()._setActionPending()
     get().sendMessage?.({ type: 'draw_card' })
   },
 
   passTurn: () => {
+    get()._setActionPending()
     get().sendMessage?.({ type: 'pass_turn' })
   },
 
@@ -221,11 +365,13 @@ export const useGameStore = create((set, get) => ({
   },
 
   challengeWildFour: () => {
+    get()._setActionPending()
     get().sendMessage?.({ type: 'challenge_wild4' })
   },
 
   leaveRoom: () => {
     get().sendMessage?.({ type: 'leave_room' })
+    clearSession()
     set({ roomId: null, roomState: null, gameState: null, playerId: null, bubbles: {} })
   },
 

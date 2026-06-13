@@ -882,6 +882,346 @@ class TestReconnection:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 18. Rematch
+# ─────────────────────────────────────────────────────────────────────────────
+
+def finish_game(g: GameState) -> None:
+    """Drive a started 2-player game to FINISHED by playing p0's last card."""
+    give_hand(p0(g), c("red", "number", 3))
+    give_hand(p1(g), c("blue", "number", 8), c("green", "number", 2))
+    g.current_player_index = 0
+    g.play_card(p0(g).id, p0(g).hand[0].id)
+    assert g.status == GameStatus.FINISHED
+
+
+class TestRematch:
+    def test_start_game_rejected_while_playing(self):
+        g = make_game("A", "B")
+        force_start(g)
+        result = g.start_game()
+        assert result["success"] is False
+
+    def test_reset_rejected_unless_finished(self):
+        g = make_game("A", "B")
+        assert g.reset_for_rematch()["success"] is False
+        force_start(g)
+        assert g.reset_for_rematch()["success"] is False
+
+    def test_reset_returns_to_waiting_and_clears_round_state(self):
+        g = make_game("A", "B")
+        force_start(g)
+        finish_game(g)
+        room_id, host = g.room_id, g.host_player_id
+        result = g.reset_for_rematch()
+        assert result["success"] is True
+        assert g.status == GameStatus.WAITING
+        assert g.room_id == room_id
+        assert g.host_player_id == host
+        assert len(g.players) == 2
+        assert all(len(p.hand) == 0 for p in g.players)
+        assert g.placements == []
+        assert g.winner is None and g.winner_id is None
+        assert g.draw_stack == 0
+        assert g.uno_called == set()
+        assert g.turn_deadline_ms is None
+
+    def test_reset_prunes_disconnected_and_transfers_host(self):
+        g = make_game("A", "B", "C")
+        force_start(g)
+        # B finishes first; game continues until one active player remains
+        give_hand(p1(g), c("red", "number", 3))
+        give_hand(p0(g), FILLER(), FILLER())
+        give_hand(p2(g), FILLER(), FILLER())
+        g.current_player_index = 1
+        g.play_card(p1(g).id, p1(g).hand[0].id)
+        # A (the host) finishes next
+        give_hand(p0(g), c("red", "number", 7))
+        g.current_player_index = 0
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        assert g.status == GameStatus.FINISHED
+
+        host_id = g.host_player_id
+        g.disconnect_player(host_id)
+        result = g.reset_for_rematch()
+        assert result["success"] is True
+        assert host_id in result["removed_player_ids"]
+        assert all(p.id != host_id for p in g.players)
+        assert g.host_player_id is not None and g.host_player_id != host_id
+
+    def test_new_round_starts_normally_after_reset(self):
+        g = make_game("A", "B")
+        force_start(g)
+        finish_game(g)
+        g.reset_for_rematch()
+        result = g.start_game()
+        assert result["success"] is True
+        assert g.status == GameStatus.PLAYING
+        assert all(len(p.hand) == 7 for p in g.players)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 19. Scoring
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestScoring:
+    def test_card_point_values(self):
+        assert c("red", "number", 7).points() == 7
+        assert c("red", "number", 0).points() == 0
+        assert c("red", "skip").points() == 20
+        assert c("red", "reverse").points() == 20
+        assert c("red", "draw_two").points() == 20
+        assert c("wild", "wild").points() == 50
+        assert c("wild", "wild_draw_four").points() == 50
+
+    def test_winner_scores_opponents_hands(self):
+        g = make_game("A", "B")
+        force_start(g)
+        give_hand(p0(g), c("red", "number", 3))
+        give_hand(p1(g), c("blue", "skip"), c("wild", "wild"), c("green", "number", 9))
+        g.current_player_index = 0
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        assert g.scores[p0(g).id] == 20 + 50 + 9
+        assert g.last_round_points == 79
+        assert g.rounds_played == 1
+
+    def test_score_snapshot_at_first_finish(self):
+        g = make_game("A", "B", "C")
+        force_start(g)
+        give_hand(p0(g), c("red", "number", 5))
+        give_hand(p1(g), c("red", "number", 2), FILLER())
+        give_hand(p2(g), c("red", "number", 4), FILLER())
+        g.current_player_index = 0
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        expected = 2 + 8 + 4 + 8
+        assert g.scores[p0(g).id] == expected
+        # Continuation play must not change the recorded score
+        g.current_player_index = 1
+        g.play_card(p1(g).id, p1(g).hand[0].id)
+        assert g.scores[p0(g).id] == expected
+        assert g.scores.get(p1(g).id, 0) == 0
+
+    def test_scores_accumulate_across_rounds(self):
+        g = make_game("A", "B")
+        force_start(g)
+        give_hand(p0(g), c("red", "number", 3))
+        give_hand(p1(g), c("green", "number", 6), FILLER())
+        g.current_player_index = 0
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        first = g.scores[p0(g).id]
+        assert first == 14
+
+        g.reset_for_rematch()
+        assert g.scores[p0(g).id] == first  # survives reset
+        g.start_game()
+        force_start(g)
+        give_hand(p0(g), c("red", "number", 3))
+        give_hand(p1(g), c("yellow", "number", 5), FILLER())
+        g.current_player_index = 0
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        assert g.scores[p0(g).id] == first + 13
+        assert g.rounds_played == 2
+
+    def test_default_win_awards_points_once(self):
+        g = make_game("A", "B", "C")
+        force_start(g)
+        give_hand(p0(g), c("red", "number", 5), FILLER())
+        give_hand(p1(g), c("red", "number", 2))
+        give_hand(p2(g), c("red", "number", 4))
+        g.disconnect_player(p1(g).id)
+        g.disconnect_player(p2(g).id)
+        g.current_player_index = 0
+        g._auto_skip_offline()
+        assert g.status == GameStatus.FINISHED
+        assert g.winner_id == p0(g).id
+        assert g.scores[p0(g).id] == 2 + 4
+        assert g.rounds_played == 1
+
+    def test_scores_in_serialised_state(self):
+        g = make_game("A", "B")
+        force_start(g)
+        g.scores[p0(g).id] = 42
+        state = g.get_state_for_player(p0(g).id)
+        me = next(p for p in state["players"] if p["id"] == p0(g).id)
+        other = next(p for p in state["players"] if p["id"] == p1(g).id)
+        assert me["score"] == 42
+        assert other["score"] == 0
+        room = g.get_room_state()
+        assert next(p for p in room["players"] if p["id"] == p0(g).id)["score"] == 42
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 20. Room settings & draw stacking
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSettings:
+    def test_defaults(self):
+        g = make_game("A", "B")
+        assert g.settings == {"turn_seconds": 30, "stack_draw_cards": False}
+
+    def test_host_updates_settings_in_lobby(self):
+        g = make_game("A", "B")
+        result = g.update_settings(g.host_player_id, {"turn_seconds": 15, "stack_draw_cards": True})
+        assert result["success"] is True
+        assert g.settings["turn_seconds"] == 15
+        assert g.settings["stack_draw_cards"] is True
+
+    def test_non_host_rejected(self):
+        g = make_game("A", "B")
+        result = g.update_settings(p1(g).id, {"turn_seconds": 15})
+        assert result["success"] is False
+
+    def test_invalid_turn_seconds_rejected(self):
+        g = make_game("A", "B")
+        result = g.update_settings(g.host_player_id, {"turn_seconds": 99})
+        assert result["success"] is False
+        assert g.settings["turn_seconds"] == 30
+
+    def test_rejected_mid_game(self):
+        g = make_game("A", "B")
+        force_start(g)
+        result = g.update_settings(g.host_player_id, {"turn_seconds": 15})
+        assert result["success"] is False
+
+    def test_settings_survive_rematch(self):
+        g = make_game("A", "B")
+        g.update_settings(g.host_player_id, {"turn_seconds": 60, "stack_draw_cards": True})
+        force_start(g)
+        finish_game(g)
+        g.reset_for_rematch()
+        assert g.settings == {"turn_seconds": 60, "stack_draw_cards": True}
+
+    def test_settings_in_serialised_state(self):
+        g = make_game("A", "B")
+        assert g.get_room_state()["settings"]["turn_seconds"] == 30
+        force_start(g)
+        assert g.get_state_for_player(p0(g).id)["settings"]["stack_draw_cards"] is False
+
+
+class TestDrawStacking:
+    def _stacking_game(self):
+        g = make_game("A", "B", "C")
+        g.update_settings(g.host_player_id, {"stack_draw_cards": True})
+        force_start(g)
+        return g
+
+    def test_plus_two_stacks_on_plus_two(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("red", "draw_two"), FILLER())
+        give_hand(p1(g), c("blue", "draw_two"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        assert g.draw_stack == 2
+        result = g.play_card(p1(g).id, p1(g).hand[0].id)
+        assert result["success"] is True
+        assert g.draw_stack == 4
+        # Victim draws the full accumulated stack
+        before = len(p2(g).hand)
+        g.draw_card(p2(g).id)
+        assert len(p2(g).hand) == before + 4
+        assert g.draw_stack == 0
+
+    def test_plus_four_stacks_on_plus_two(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("red", "draw_two"), FILLER())
+        give_hand(p1(g), c("wild", "wild_draw_four"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        result = g.play_card(p1(g).id, p1(g).hand[0].id, chosen_color="blue")
+        assert result["success"] is True
+        assert g.draw_stack == 6
+
+    def test_plus_two_cannot_stack_on_plus_four(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("wild", "wild_draw_four"), FILLER())
+        give_hand(p1(g), c("red", "draw_two"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id, chosen_color="red")
+        result = g.play_card(p1(g).id, p1(g).hand[0].id)
+        assert result["success"] is False
+        assert g.draw_stack == 4
+
+    def test_non_draw_card_rejected_during_stack(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("red", "draw_two"), FILLER())
+        give_hand(p1(g), c("red", "number", 9), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        result = g.play_card(p1(g).id, p1(g).hand[0].id)
+        assert result["success"] is False
+
+    def test_stacked_plus_four_not_challengeable(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("red", "draw_two"), FILLER())
+        give_hand(p1(g), c("wild", "wild_draw_four"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        g.play_card(p1(g).id, p1(g).hand[0].id, chosen_color="blue")
+        assert g.challenge_available is False
+
+    def test_unstacked_plus_four_still_challengeable(self):
+        g = self._stacking_game()
+        give_hand(p0(g), c("wild", "wild_draw_four"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id, chosen_color="blue")
+        assert g.challenge_available is True
+
+    def test_stacking_off_still_forbids(self):
+        g = make_game("A", "B")
+        force_start(g)
+        give_hand(p0(g), c("red", "draw_two"), FILLER())
+        give_hand(p1(g), c("blue", "draw_two"), FILLER())
+        g.play_card(p0(g).id, p0(g).hand[0].id)
+        result = g.play_card(p1(g).id, p1(g).hand[0].id)
+        assert result["success"] is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 21. Kick player
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestKick:
+    def test_host_kicks_in_lobby(self):
+        g = make_game("A", "B", "C")
+        target = p1(g).id
+        result = g.kick_player(g.host_player_id, target)
+        assert result["success"] is True and result["removed"] is True
+        assert all(p.id != target for p in g.players)
+        assert target in g.kicked_player_ids
+
+    def test_non_host_kick_rejected(self):
+        g = make_game("A", "B")
+        result = g.kick_player(p1(g).id, p0(g).id)
+        assert result["success"] is False
+
+    def test_self_kick_rejected(self):
+        g = make_game("A", "B")
+        result = g.kick_player(g.host_player_id, g.host_player_id)
+        assert result["success"] is False
+
+    def test_mid_game_kick_marks_offline_and_advances_turn(self):
+        g = make_game("A", "B", "C")
+        force_start(g)
+        give_hand(p1(g), FILLER(), FILLER())
+        g.current_player_index = 1
+        result = g.kick_player(g.host_player_id, p1(g).id)
+        assert result["success"] is True and result["removed"] is False
+        assert p1(g).is_connected is False
+        assert len(g.players) == 3  # stays in the game as offline
+        assert g.players[g.current_player_index].id != p1(g).id
+
+    def test_kicked_player_cannot_reconnect(self):
+        g = make_game("A", "B")
+        target = p1(g).id
+        g.kick_player(g.host_player_id, target)
+        assert g.reconnect_player(target) is False
+
+    def test_rematch_prunes_kicked_player(self):
+        g = make_game("A", "B", "C")
+        force_start(g)
+        kicked_id = p2(g).id
+        g.kick_player(g.host_player_id, kicked_id)
+        finish_game(g)
+        result = g.reset_for_rematch()
+        assert result["success"] is True
+        assert kicked_id in result["removed_player_ids"]
+        assert all(p.id != kicked_id for p in g.players)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Run
 # ─────────────────────────────────────────────────────────────────────────────
 

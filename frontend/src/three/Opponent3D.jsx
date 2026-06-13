@@ -9,7 +9,7 @@ import { useGameStore } from '../store/gameStore'
 import PlayerCharacter3D from './PlayerCharacter3D'
 import { TABLE_TOP_Y } from './layout'
 
-export default function Opponent3D({ player, seat, hue = 200, isCurrentTurn }) {
+export default function Opponent3D({ player, seat, hue = 200, isCurrentTurn, dealing = false }) {
   const { playerId, catchUno } = useGameStore()
   const bubble = useGameStore((s) => s.bubbles?.[player.id])
   const [showCatch, setShowCatch] = useState(false)
@@ -40,7 +40,7 @@ export default function Opponent3D({ player, seat, hue = 200, isCurrentTurn }) {
         hue={hue}
         active={isCurrentTurn}
         offline={isOffline}
-        count={cardCount}
+        count={dealing ? 0 : cardCount}
       />
 
       {/* Chat / emoji bubble (floats above the nameplate) */}

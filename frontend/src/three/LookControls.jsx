@@ -31,6 +31,7 @@ export default function LookControls({
   const targetPitch = useRef(0)
 
   const dragging = useRef(false)
+  const pointerId = useRef(null)
   const last = useRef({ x: 0, y: 0 })
 
   // Pin the camera and capture its base forward direction once.
@@ -50,11 +51,15 @@ export default function LookControls({
     const el = gl.domElement
 
     const onDown = (e) => {
+      // Only the first touch/button drives the camera — a second finger
+      // landing mid-drag must not make the view jump (multi-touch fix).
+      if (dragging.current) return
       dragging.current = true
+      pointerId.current = e.pointerId
       last.current = { x: e.clientX, y: e.clientY }
     }
     const onMove = (e) => {
-      if (!dragging.current) return
+      if (!dragging.current || e.pointerId !== pointerId.current) return
       const dx = e.clientX - last.current.x
       const dy = e.clientY - last.current.y
       last.current = { x: e.clientX, y: e.clientY }
@@ -69,8 +74,10 @@ export default function LookControls({
         PITCH_UP,
       )
     }
-    const onUp = () => {
+    const onUp = (e) => {
+      if (e.pointerId !== pointerId.current) return
       dragging.current = false
+      pointerId.current = null
     }
 
     el.addEventListener('pointerdown', onDown)

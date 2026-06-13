@@ -3,23 +3,29 @@
  *
  * On mount it:
  *   1. Opens a connection to the server.
- *   2. Injects a `sendMessage` function into the Zustand store.
- *   3. Schedules a reconnect on unexpected close.
- *
- * No localStorage is read or written. All session state lives on
- * the server — refreshing the page returns the player to the lobby.
+ *   2. Injects a stable `sendMessage` function into the Zustand store.
+ *      Messages sent while the socket is connecting/closed are queued
+ *      and flushed on open (stale entries are dropped).
+ *   3. On open, resumes the saved session (sessionStorage) by rejoining
+ *      the room with the stored player_id, so a page refresh or a
+ *      transient drop puts the player straight back into their game.
+ *   4. Schedules a reconnect on unexpected close.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
-import { useGameStore } from '../store/gameStore'
+import { useGameStore, loadSession } from '../store/gameStore'
 
 const WS_URL =
   typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_URL
     ? import.meta.env.VITE_WS_URL
     : 'wss://uno-nq5x.onrender.com/ws'
 
+const QUEUE_MAX = 20        // outbound messages buffered while offline
+const QUEUE_MAX_AGE = 5000  // ms — older queued actions are stale, drop them
+
 export function useWebSocket() {
   const wsRef = useRef(null)
+  const queueRef = useRef([])
   const reconnectTimer = useRef(null)
   const isMounted = useRef(true)
 
@@ -27,6 +33,18 @@ export function useWebSocket() {
   const setConnected  = useGameStore((s) => s.setConnected)
   const setSendMessage = useGameStore((s) => s.setSendMessage)
   const setError      = useGameStore((s) => s.setError)
+
+  // One stable sender for the lifetime of the hook: sends immediately when
+  // the socket is open, otherwise queues for the next onopen flush.
+  const sendMessage = useCallback((msg) => {
+    const ws = wsRef.current
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg))
+    } else {
+      queueRef.current.push({ msg, ts: Date.now() })
+      if (queueRef.current.length > QUEUE_MAX) queueRef.current.shift()
+    }
+  }, [])
 
   const connect = useCallback(() => {
     if (!isMounted.current) return
@@ -41,13 +59,31 @@ export function useWebSocket() {
       setConnected(true)
       setError(null)
 
-      const send = (msg) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify(msg))
-        }
+      // Resume identity first so the server knows who we are before any
+      // queued action arrives. Live store identity wins (mid-game WS drop);
+      // sessionStorage covers a full page reload.
+      const store = useGameStore.getState()
+      const session =
+        store.playerId && store.roomId
+          ? { playerId: store.playerId, roomId: store.roomId, playerName: store.playerName }
+          : loadSession()
+      if (session?.playerId && session?.roomId) {
+        store.beginResume(session)
+        ws.send(
+          JSON.stringify({
+            type: 'join_room',
+            room_id: session.roomId,
+            player_name: session.playerName || 'Player',
+            player_id: session.playerId,
+          })
+        )
       }
-      setSendMessage(send)
-      // No auto-rejoin — session state lives on the server only
+
+      // Flush queued messages, dropping stale gameplay actions.
+      const now = Date.now()
+      const pending = queueRef.current.filter((q) => now - q.ts < QUEUE_MAX_AGE)
+      queueRef.current = []
+      for (const q of pending) ws.send(JSON.stringify(q.msg))
     }
 
     ws.onmessage = (event) => {
@@ -67,15 +103,13 @@ export function useWebSocket() {
     ws.onclose = () => {
       if (!isMounted.current) return
       setConnected(false)
-      setSendMessage(null)
-      // Reconnect after 2.5 seconds (restores the WS connection but
-      // player must re-enter the lobby — no session is remembered)
       reconnectTimer.current = setTimeout(connect, 2500)
     }
-  }, [handleMessage, setConnected, setSendMessage, setError])
+  }, [handleMessage, setConnected, setError])
 
   useEffect(() => {
     isMounted.current = true
+    setSendMessage(sendMessage)
     connect()
 
     return () => {
@@ -83,5 +117,5 @@ export function useWebSocket() {
       clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
     }
-  }, [connect])
+  }, [connect, sendMessage, setSendMessage])
 }

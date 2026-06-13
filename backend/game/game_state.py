@@ -12,7 +12,7 @@ Supports:
 """
 import random
 from enum import Enum
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from .card import Card, Color, CardType
 from .deck import create_deck
@@ -51,6 +51,15 @@ class GameState:
         # Multi-place ranking
         self.placements: List[dict] = []              # [{rank, id, name}] in finish order
         self.finished_player_ids: Set[str] = set()    # players who have emptied their hand
+        # Cumulative match scoring — survives rematches in the same room
+        self.scores: Dict[str, int] = {}              # player_id -> total points
+        self.last_round_points: int = 0               # points the last round was worth
+        self.round_points_awarded: bool = False       # guards against double-award
+        self.rounds_played: int = 0
+        # Host-configurable room settings (changeable in the lobby only)
+        self.settings: dict = {"turn_seconds": 30, "stack_draw_cards": False}
+        # Players the host kicked — blocked from reconnecting by player_id
+        self.kicked_player_ids: Set[str] = set()
 
     # ------------------------------------------------------------------
     # Room management
@@ -70,6 +79,7 @@ class GameState:
     def remove_player(self, player_id: str) -> None:
         """Remove a player from the lobby."""
         self.players = [p for p in self.players if p.id != player_id]
+        self.scores.pop(player_id, None)
         # Hand host to next available player if host left
         if self.host_player_id == player_id and self.players:
             self.host_player_id = self.players[0].id
@@ -77,6 +87,8 @@ class GameState:
             self.host_player_id = None
 
     def reconnect_player(self, player_id: str) -> bool:
+        if player_id in self.kicked_player_ids:
+            return False
         p = self._find_player(player_id)
         if p:
             p.is_connected = True
@@ -94,12 +106,16 @@ class GameState:
 
     def start_game(self) -> dict:
         """Initialise the deck, deal cards, and begin play."""
+        if self.status == GameStatus.PLAYING:
+            return {"success": False, "error": "Game already in progress."}
         if len(self.players) < 2:
             return {"success": False, "error": "Need at least 2 players to start."}
         if len(self.players) > 7:
             return {"success": False, "error": "Maximum 7 players allowed."}
 
-        # Reset game state
+        # Reset game state (cumulative `scores` deliberately survives)
+        self.last_round_points = 0
+        self.round_points_awarded = False
         self.deck = create_deck()
         self.discard_pile = []
         self.current_player_index = 0
@@ -163,6 +179,53 @@ class GameState:
             self._log(f"Opening card is Draw Two — {first.name} draws 2 and is skipped.")
 
     # ------------------------------------------------------------------
+    # Rematch
+    # ------------------------------------------------------------------
+
+    def reset_for_rematch(self) -> dict:
+        """
+        Return a finished game to the lobby for another round.
+
+        Keeps: room_id, connected players, host, cumulative scores,
+        settings and the kicked list. Disconnected players are pruned
+        (their ids are returned so the caller can clean up its indexes).
+        """
+        if self.status != GameStatus.FINISHED:
+            return {"success": False, "error": "Game is not finished."}
+
+        removed = [p.id for p in self.players if not p.is_connected]
+        if removed:
+            self.players = [p for p in self.players if p.is_connected]
+            for pid in removed:
+                self.scores.pop(pid, None)
+        if self.host_player_id not in {p.id for p in self.players}:
+            self.host_player_id = self.players[0].id if self.players else None
+
+        for p in self.players:
+            p.hand = []
+        self.deck = []
+        self.discard_pile = []
+        self.current_player_index = 0
+        self.direction = 1
+        self.current_color = None
+        self.previous_color = None
+        self.draw_stack = 0
+        self.uno_called = set()
+        self.drawn_card_id = None
+        self.challenge_available = False
+        self.last_wild_draw_four_player_id = None
+        self.winner = None
+        self.winner_id = None
+        self.placements = []
+        self.finished_player_ids = set()
+        self.skipped_player_id = None
+        self.turn_deadline_ms = None
+        self.action_log = []
+        self.last_action = ""
+        self.status = GameStatus.WAITING
+        return {"success": True, "removed_player_ids": removed}
+
+    # ------------------------------------------------------------------
     # Play card
     # ------------------------------------------------------------------
 
@@ -191,14 +254,27 @@ class GameState:
         top = self.discard_pile[-1]
 
         # --- Validate during a draw stack ---
-        # Official UNO rules: when facing a draw penalty you MUST draw —
-        # you cannot stack another +2 or +4 on top.  Challenge a Wild Draw
-        # Four via the separate challenge_wild_four() action instead.
+        # Official UNO rules (default): when facing a draw penalty you MUST
+        # draw — you cannot stack another +2 or +4 on top.  Challenge a Wild
+        # Draw Four via the separate challenge_wild_four() action instead.
+        # With the `stack_draw_cards` house rule enabled, the penalty may be
+        # passed on: +2 on +2, +4 on +2 or +4 — but never +2 on +4.
         if self.draw_stack > 0:
-            return {
-                "success": False,
-                "error": f"You must draw {self.draw_stack} cards (or challenge the +4).",
-            }
+            if not self.settings.get("stack_draw_cards"):
+                return {
+                    "success": False,
+                    "error": f"You must draw {self.draw_stack} cards (or challenge the +4).",
+                }
+            if card.card_type not in (CardType.DRAW_TWO, CardType.WILD_DRAW_FOUR):
+                return {
+                    "success": False,
+                    "error": f"Stack another +2/+4 or draw {self.draw_stack}.",
+                }
+            if (
+                card.card_type == CardType.DRAW_TWO
+                and top.card_type == CardType.WILD_DRAW_FOUR
+            ):
+                return {"success": False, "error": "A +2 cannot be stacked on a +4."}
         else:
             # After drawing this turn, only the drawn card may be played
             if self.drawn_card_id and card.id != self.drawn_card_id:
@@ -227,6 +303,11 @@ class GameState:
             self.finished_player_ids.add(current.id)
             self.skipped_player_id = None
             self._log(f"🎉 {current.name} finishes in {ordinal} place!")
+
+            # Round points are snapshotted the moment the first player goes
+            # out — continuation play for 2nd/3rd place can't distort them.
+            if rank == 1:
+                self._award_round_points(current.id)
 
             # Count remaining active players
             active = [p for p in self.players if p.id not in self.finished_player_ids]
@@ -308,11 +389,14 @@ class GameState:
             self._log(f"{name} played Wild — colour changed to {chosen_color}!")
 
         elif card.card_type == CardType.WILD_DRAW_FOUR:
+            was_stacked = self.draw_stack > 0
             self.previous_color = self.current_color
             self.current_color = Color(chosen_color)
             self.skipped_player_id = None
             self.draw_stack += 4
-            self.challenge_available = True
+            # A +4 stacked onto an existing penalty cannot be challenged —
+            # the challenge resolves a flat 4, not the accumulated stack.
+            self.challenge_available = not was_stacked
             self.last_wild_draw_four_player_id = player.id
             next_player = self.players[self._next_index()]
             self._advance_turn()
@@ -406,6 +490,57 @@ class GameState:
         self._log(f"{current.name} passed.")
         self._auto_skip_offline()
         return {"success": True}
+
+    # ------------------------------------------------------------------
+    # Room settings & host controls
+    # ------------------------------------------------------------------
+
+    def update_settings(self, player_id: str, new: dict) -> dict:
+        """Host-only, lobby-only settings update. Unknown keys are ignored."""
+        if player_id != self.host_player_id:
+            return {"success": False, "error": "Only the host can change settings."}
+        if self.status != GameStatus.WAITING:
+            return {"success": False, "error": "Settings can only be changed in the lobby."}
+        if not isinstance(new, dict):
+            return {"success": False, "error": "Invalid settings payload."}
+
+        if "turn_seconds" in new:
+            if new["turn_seconds"] not in (15, 30, 60):
+                return {"success": False, "error": "turn_seconds must be 15, 30 or 60."}
+            self.settings["turn_seconds"] = new["turn_seconds"]
+        if "stack_draw_cards" in new:
+            self.settings["stack_draw_cards"] = bool(new["stack_draw_cards"])
+        return {"success": True}
+
+    def kick_player(self, requester_id: str, target_id: str) -> dict:
+        """
+        Host removes a player. In the lobby they're removed outright;
+        mid-game they're marked offline (the auto-skip machinery plays
+        their turns) and pruned at the next rematch. Kicked ids cannot
+        reconnect with the same player_id.
+        """
+        if requester_id != self.host_player_id:
+            return {"success": False, "error": "Only the host can kick players."}
+        if requester_id == target_id:
+            return {"success": False, "error": "You cannot kick yourself."}
+        target = self._find_player(target_id)
+        if not target:
+            return {"success": False, "error": "Player not found."}
+
+        self.kicked_player_ids.add(target_id)
+
+        if self.status == GameStatus.WAITING:
+            self.remove_player(target_id)
+            return {"success": True, "removed": True, "player_name": target.name}
+
+        was_current = (
+            self.status == GameStatus.PLAYING
+            and self.players[self.current_player_index].id == target_id
+        )
+        self.disconnect_player(target_id)
+        if was_current:
+            self._auto_skip_offline()
+        return {"success": True, "removed": False, "player_name": target.name}
 
     # ------------------------------------------------------------------
     # Turn timeout penalty
@@ -548,6 +683,9 @@ class GameState:
             "skipped_player_id": self.skipped_player_id,
             "turn_deadline": self.turn_deadline_ms,
             "placements": list(self.placements),
+            "last_round_points": self.last_round_points,
+            "rounds_played": self.rounds_played,
+            "settings": dict(self.settings),
             "last_action": self.last_action,
             "action_log": self.action_log[-15:],
             "host_player_id": self.host_player_id,
@@ -570,6 +708,7 @@ class GameState:
                     "has_called_uno": player.id in self.uno_called,
                     "is_connected": player.is_connected,
                     "rank": finished_rank,   # None = still playing; 1/2/3… = placed
+                    "score": self.scores.get(player.id, 0),
                 }
             )
             if player.id == player_id:
@@ -585,8 +724,15 @@ class GameState:
             "status": self.status.value,
             "host_player_id": self.host_player_id,
             "can_start": 2 <= len(self.players) <= 7,
+            "settings": dict(self.settings),
+            "rounds_played": self.rounds_played,
             "players": [
-                {"id": p.id, "name": p.name, "is_connected": p.is_connected}
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "is_connected": p.is_connected,
+                    "score": self.scores.get(p.id, 0),
+                }
                 for p in self.players
             ],
         }
@@ -599,6 +745,24 @@ class GameState:
         if not player_id:
             return None
         return next((p for p in self.players if p.id == player_id), None)
+
+    def _award_round_points(self, winner_id: str) -> None:
+        """
+        Classic UNO scoring: the round winner collects the point value of
+        every card left in opponents' hands. Awarded at most once per round.
+        """
+        if self.round_points_awarded:
+            return
+        pts = sum(
+            c.points() for p in self.players if p.id != winner_id for c in p.hand
+        )
+        self.scores[winner_id] = self.scores.get(winner_id, 0) + pts
+        self.last_round_points = pts
+        self.round_points_awarded = True
+        self.rounds_played += 1
+        winner = self._find_player(winner_id)
+        if winner:
+            self._log(f"💰 {winner.name} scores {pts} points!")
 
     def _next_index(self) -> int:
         """Index of the next active (non-finished) player in the current direction."""
@@ -671,6 +835,7 @@ class GameState:
             self.status    = GameStatus.FINISHED
             self.winner    = self.placements[0]["name"]
             self.winner_id = self.placements[0]["id"]
+            self._award_round_points(self.winner_id)
             self._log(f"🏆 Game over! {self.winner} takes the crown!")
             return True
 
@@ -689,6 +854,7 @@ class GameState:
             self.status    = GameStatus.FINISHED
             self.winner    = self.placements[0]["name"]
             self.winner_id = self.placements[0]["id"]
+            self._award_round_points(self.winner_id)
             self._log(f"🏆 {winner.name} wins — all other active players disconnected!")
             return True
 

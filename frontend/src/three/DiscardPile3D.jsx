@@ -15,7 +15,7 @@ function jitter(id = '') {
   return ((h / 255) - 0.5) * 0.5
 }
 
-export default function DiscardPile3D({ topCard, currentColor, suppressId, underCard }) {
+export default function DiscardPile3D({ topCard, currentColor, suppressId, underCard, recentCards = [] }) {
   if (!topCard) return null
 
   const ringColor = ACTIVE_COLOR_HEX[currentColor] || ACTIVE_COLOR_HEX.wild
@@ -35,6 +35,18 @@ export default function DiscardPile3D({ topCard, currentColor, suppressId, under
         <ringGeometry args={[1.05, 1.35, 48]} />
         <meshBasicMaterial color={ringColor} transparent opacity={0.85} />
       </mesh>
+
+      {/* Older discards lying flat beneath the propped top card — gives the
+          pile real depth without re-rendering more than two extra meshes. */}
+      {recentCards.slice(0, 2).map((c, i) => (
+        <Card3D
+          key={c.id}
+          card={c}
+          liftOnHover={false}
+          position={[0, baseY + 0.012 * (2 - i), 0]}
+          rotation={[-Math.PI / 2, 0, jitter(c.id) * 1.6]}
+        />
+      ))}
 
       {/* The card on the pile — the new top, or the previous card while the
           new one is still flying in. Propped up toward the viewer so it's

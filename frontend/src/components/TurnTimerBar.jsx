@@ -7,23 +7,22 @@
 import { useEffect, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 
-const TURN_SECONDS = 30
-
 export default function TurnTimerBar() {
   const { gameState, playerId } = useGameStore()
   const status = gameState?.status
   const currentId = gameState?.current_player_id
   const deadline = gameState?.turn_deadline
   const resetKey = `${currentId}-${deadline ?? ''}`
+  const turnSeconds = gameState?.settings?.turn_seconds ?? 30
 
-  const [left, setLeft] = useState(TURN_SECONDS)
+  const [left, setLeft] = useState(turnSeconds)
 
   useEffect(() => {
     if (status !== 'playing') return
-    setLeft(TURN_SECONDS)
+    setLeft(turnSeconds)
     const id = setInterval(() => setLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
     return () => clearInterval(id)
-  }, [resetKey, status])
+  }, [resetKey, status, turnSeconds])
 
   if (!gameState || status !== 'playing') return null
 
@@ -42,7 +41,7 @@ export default function TurnTimerBar() {
         <div
           key={resetKey}
           className="timerbar-fill"
-          style={{ animationDuration: `${TURN_SECONDS}s` }}
+          style={{ animationDuration: `${turnSeconds}s` }}
         />
       </div>
     </div>

@@ -16,9 +16,13 @@ const WS_URL =
     : 'wss://uno-nq5x.onrender.com/ws'
 const ROOMS_BASE = WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
 
+const TURN_OPTIONS = [15, 30, 60]
+
 function LobbyPanel() {
   const {
     isConnected,
+    connectionPhase,
+    joinPending,
     playerId,
     playerName,
     roomId,
@@ -27,6 +31,8 @@ function LobbyPanel() {
     joinRoom,
     startGame,
     leaveRoom,
+    updateSettings,
+    kickPlayer,
   } = useGameStore()
 
   const [tab, setTab] = useState('create')
@@ -54,6 +60,8 @@ function LobbyPanel() {
     const players = rs.players || []
     const isHost = rs.host_player_id === playerId
     const canStart = rs.can_start && isHost
+    const settings = rs.settings || { turn_seconds: 30, stack_draw_cards: false }
+    const anyScores = players.some((p) => (p.score ?? 0) > 0)
 
     return (
       <div className="lobby3d-card waiting-room">
@@ -72,9 +80,57 @@ function LobbyPanel() {
               <span className="player-name">{p.name}</span>
               {p.id === rs.host_player_id && <span className="badge badge--host">Host</span>}
               {!p.is_connected && <span className="badge badge--offline">Offline</span>}
+              {anyScores && <span className="badge badge--score">{p.score ?? 0} pts</span>}
+              {isHost && p.id !== playerId && (
+                <button
+                  className="player-kick"
+                  title={`Kick ${p.name}`}
+                  onClick={() => kickPlayer(p.id)}
+                >
+                  ✕
+                </button>
+              )}
             </div>
           ))}
         </div>
+
+        {/* Room settings — host edits, everyone else sees read-only chips */}
+        <div className="room-settings">
+          <div className="player-list-label">Settings</div>
+          <div className="room-settings-row">
+            <span className="room-settings-name">Turn time</span>
+            {isHost ? (
+              <div className="segmented">
+                {TURN_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    className={`segmented-opt ${settings.turn_seconds === s ? 'segmented-opt--active' : ''}`}
+                    onClick={() => updateSettings({ turn_seconds: s })}
+                  >
+                    {s}s
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <span className="room-settings-value">{settings.turn_seconds}s</span>
+            )}
+          </div>
+          <div className="room-settings-row">
+            <span className="room-settings-name">Stack +2/+4</span>
+            {isHost ? (
+              <button
+                className={`toggle ${settings.stack_draw_cards ? 'toggle--on' : ''}`}
+                onClick={() => updateSettings({ stack_draw_cards: !settings.stack_draw_cards })}
+              >
+                <span className="toggle-knob" />
+                {settings.stack_draw_cards ? 'On' : 'Off'}
+              </button>
+            ) : (
+              <span className="room-settings-value">{settings.stack_draw_cards ? 'On' : 'Off'}</span>
+            )}
+          </div>
+        </div>
+
         {isHost ? (
           <div className="waiting-actions">
             {canStart ? (
@@ -128,13 +184,20 @@ function LobbyPanel() {
         />
       </div>
 
+      {!isConnected && (
+        <div className="conn-status">
+          <span className="spinner" aria-hidden="true" />
+          {connectionPhase === 'reconnecting' ? 'Reconnecting to server…' : 'Connecting to server…'}
+        </div>
+      )}
+
       {tab === 'create' ? (
         <button
           className="btn btn--primary btn--large"
-          disabled={!name.trim() || !isConnected}
+          disabled={!name.trim() || !isConnected || joinPending}
           onClick={() => createRoom(name)}
         >
-          {isConnected ? 'Create Room' : 'Connecting…'}
+          {joinPending ? 'Creating…' : isConnected ? 'Create Room' : 'Connecting…'}
         </button>
       ) : (
         <>
@@ -151,10 +214,10 @@ function LobbyPanel() {
           </div>
           <button
             className="btn btn--primary btn--large"
-            disabled={!name.trim() || !joinCode.trim() || !isConnected}
+            disabled={!name.trim() || !joinCode.trim() || !isConnected || joinPending}
             onClick={() => joinRoom(joinCode, name)}
           >
-            Join Room
+            {joinPending ? 'Joining…' : 'Join Room'}
           </button>
           {openRooms.length > 0 && (
             <div className="open-rooms">
